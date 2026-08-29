@@ -172,9 +172,9 @@ def confidence_node(state: SupportState) -> SupportState:
 
 def escalation_confirmation_node(state: SupportState) -> SupportState:
     """
-    Runs ONLY when state['pending_escalation'] is True — i.e. the previous
+    Runs only when state['pending_escalation'] is True, i.e. the previous
     turn asked the user "would you like to talk to a human?" and this
-    incoming message is the user's reply to that question, not a new query.
+    turn is the user's reply to that question, not a new query.
     """
     print("[Escalation Node] Checking user's response to escalation offer...")
     user_reply = state["messages"][-1].content.strip().lower()
@@ -186,10 +186,9 @@ def escalation_confirmation_node(state: SupportState) -> SupportState:
     else:
         print("[Escalation Node] Reply doesn't look like yes/no — rerouting as a new question.")
         
-        # --- CRITICAL FIX: The Amnesia Protocol ---
-        # state["messages"][-1] = The NEW question (e.g., "Was ist Kaufland Pay?"). KEEP IT.
-        # state["messages"][-2] = The bot's escalation offer. DELETE IT.
-        # state["messages"][-3] = The previous failed question. DELETE IT.
+        # state["messages"][-1] = The new question 
+        # state["messages"][-2] = The bot's escalation offer
+        # state["messages"][-3] = The previous failed question
         messages_to_remove = []
         if len(state["messages"]) >= 3:
             messages_to_remove = [
@@ -201,8 +200,8 @@ def escalation_confirmation_node(state: SupportState) -> SupportState:
             "action": "reroute",
             "pending_escalation": False,
             "escalation_retry_count": 0,
-            "failed_attempt_count": 0, # Reset counter
-            "messages": messages_to_remove # Wipe the failure from memory!
+            "failed_attempt_count": 0, # reset counter
+            "messages": messages_to_remove # wipe the failure from memory
         }
 
     if confirmed:
@@ -212,7 +211,7 @@ def escalation_confirmation_node(state: SupportState) -> SupportState:
             "action": "escalate",
             "pending_escalation": False,
             "escalation_retry_count": 0,
-            "failed_attempt_count": 0, # Reset counter
+            "failed_attempt_count": 0, 
         }
     else:
         print("[Escalation Node] User declined escalation.")

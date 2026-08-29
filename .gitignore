@@ -33,7 +33,6 @@ env/
 !.env.example
 
 # Vector databases & local scraped data artifacts
-data/
 .chroma/
 *.sqlite3
 *.db

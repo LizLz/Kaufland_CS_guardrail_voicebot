@@ -1,8 +1,8 @@
 # Kaufland Voice Support Guardrail Bot
 
-A production-grade, multi-agent, voice-enabled customer support assistant for Kaufland (grocery retail, loyalty program, and in-app payments), built to demonstrate practical LLM guardrails in a domain with real financial and account-related stakes — going far beyond a generic FAQ chatbot.
+A multi-agent, voice-enabled customer support assistant for Kaufland, built to demonstrate practical LLM guardrails.
 
-The core deliverable of this project is **adversarial safety architecture**: robust PII masking, runtime prompt-injection defense, hallucination prevention, unauthorized-access refusal, and a multi-turn conversation flow designed never to dead-end users when confidence drops. Advanced retrieval (hybrid dense + lexical search with Reciprocal Rank Fusion and corpus-derived spell correction) and a low-latency voice pipeline (Deepgram STT/TTS) support this safety foundation.
+The project focuses on **adversarial safety architecture**: PII masking, runtime prompt-injection defense, hallucination prevention, unauthorized-access refusal, and a multi-turn conversation flow designed never to dead-end users when confidence drops. Advanced retrieval (hybrid dense + lexical search with Reciprocal Rank Fusion and corpus-derived spell correction) and a low-latency voice pipeline (Deepgram STT/TTS) support this safety foundation.
 
 - **Architecture & Trade-offs:** See [`DESIGN.md`](./DESIGN.md)
 - **Evaluation & Reflection:** See [`docs/evaluation.md`](./docs/evaluation.md)
@@ -49,17 +49,17 @@ The workflow is managed as a state machine (`SupportState`) via LangGraph with s
 ```
 
 ## What This Project Addresses 
-- **PII Exposure:** Automatically sanitizes sensitive user attributes (names, IBANs, phone numbers) before data hits embedding or retrieval layers, while protecting brand-specific vocabulary (e.g., Kaufland Pay, Bluecode, Kaufland Card XTRA) from false-positive named-entity masking.
+- **PII Exposure:** Automatically anonymizes sensitive user information (names, IBANs, phone numbers) before data is transformed into embedding or reaches retrieval layers, while protecting brand-specific vocabulary like Kaufland Pay, Bluecode, Kaufland Card XTRA.
 
 - **Prompt Injection:** Evaluates incoming utterances for jailbreak patterns and systemic prompt overrides via safety inspection layers.
 
 - **Hallucinated / Ungrounded Answers:** Enforces strict grounding constraints on retrieved context, governed by a three-tier confidence grader and a Two-Strike Voice UX fallback rule.
 
-- **Unauthorized Access & Action Requests:** Detects and refuses out-of-scope actions the bot cannot perform (e.g., modifying accounts, issuing refunds, crediting XTRA loyalty points, or accessing third-party passwords).
+- **Unauthorized Access & Action Requests:** Detects and refuses out-of-scope actions the bot cannot perform including modifying accounts, issuing refunds, crediting XTRA loyalty points, and accessing third-party passwords.
 
 ## What This Project Does Not Cover
 - **Complaints or Feedback Handling:** Optimized strictly for knowledge retrieval and policy guidance, not complaint intake.
-- **Account-Specific / Order-Specific Backend Data:** Operates entirely on a curated FAQ knowledge base without live CRM database integration.
+- **Account-Specific / Order-Specific Backend Data:** Operates entirely on a FAQ knowledge base without open access to live CRM database.
 
 ## Project Structure
 ```text
@@ -126,6 +126,6 @@ Prerequisite: Requires an active microphone and ffplay (bundled with ffmpeg) ins
 ### Test the Model
 The project includes an adversarial test suite designed to validate failure modes, regression fixes, and state memory persistence:
 ```bash
-pytest tests/tests.py -v               # Full test suite (requires GROQ_API_KEY)
+pytest tests/tests.py -v               # Full test (requires GROQ_API_KEY)
 pytest tests/tests.py -m "not integration" # Fast unit tests only
 ```

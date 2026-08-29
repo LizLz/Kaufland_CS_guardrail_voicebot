@@ -34,13 +34,11 @@ class Microphone:
         if status:
             print(f"[Microphone Warning] {status}")
 
-        # RawInputStream with int16 gives us raw PCM bytes.
+        # RawInputStream with int16 gives raw PCM bytes.
         audio_bytes = bytes(indata)
 
         self._chunk_count += 1
 
-        # sounddevice's callback runs in a separate audio thread.
-        # Therefore we must safely pass the data back to asyncio.
         self._loop.call_soon_threadsafe(
             self.send_callback,
             audio_bytes,

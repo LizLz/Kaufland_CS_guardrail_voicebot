@@ -19,16 +19,16 @@ def direct_response_node(state: SupportState) -> SupportState:
     action = state.get("action")
 
     if action == "escalate":
-        print("⚡ [Direct Response] User requires immediate escalation.")
+        print("[Direct Response] User requires immediate escalation.")
         return {
             "messages": [AIMessage(content=DIRECT_ESCALATE_REPLY)],
             "action": "escalate",
             "escalation_ticket": {"reason": "User requested human agent", "user_query": state["messages"][-1].content},
         }
 
-    # CRITICAL FIX: All branches below reset the error counters so LangGraph memory clears properly.
+    # always reset the error counters so LangGraph memory clears
     if action == "out_of_domain":
-        print("❓ [Direct Response] Out of domain question detected.")
+        print("[Direct Response] Out of domain question detected.")
         return {
             "messages": [AIMessage(content=OUT_OF_DOMAIN_REPLY)],
             "action": "answered",
@@ -37,7 +37,7 @@ def direct_response_node(state: SupportState) -> SupportState:
         }
 
     if action == "refuse_unauthorized_access":
-        print("🔒 [Direct Response] Refusing unauthorized account access request.")
+        print("[Direct Response] Refusing unauthorized account access request.")
         return {
             "messages": [AIMessage(content=UNAUTHORIZED_ACCESS_REPLY)],
             "action": "answered",
@@ -46,7 +46,7 @@ def direct_response_node(state: SupportState) -> SupportState:
         }
 
     if action == "refuse_action_request":
-        print("🚫 [Direct Response] Refusing action request bot cannot perform.")
+        print("[Direct Response] Refusing action request bot cannot perform.")
         return {
             "messages": [AIMessage(content=ACTION_REFUSAL_REPLY)],
             "action": "answered",
@@ -54,8 +54,7 @@ def direct_response_node(state: SupportState) -> SupportState:
             "escalation_retry_count": 0,
         }
 
-    # action == "answer" (small talk / greeting)
-    print("👋 [Direct Response] Small talk detected, replying directly.")
+    print("[Direct Response] Small talk detected, replying directly.")
     return {
         "messages": [AIMessage(content=SMALL_TALK_REPLY)],
         "action": "answered",

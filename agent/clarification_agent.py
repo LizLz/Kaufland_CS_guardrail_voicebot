@@ -12,9 +12,9 @@ NO_CONTEXT_CLARIFICATION_MESSAGE = "Dazu konnte ich leider nichts finden. Könne
 
 def clarification_node(state: SupportState) -> SupportState:
     """
-    Runs when confidence_node scored the answer as 'medium' — not confident
-    enough to answer outright, but not so weak that we should jump straight
-    to offering human escalation. Asks a targeted follow-up question instead.
+    Runs when confidence_node scored the answer as 'medium', which means the agent is not confident
+    enough to answer directly, but not so weak that it jumps straight
+    to offering human escalation. So it asks a follow-up question instead.
     """
     print("[Clarification Agent] Asking a clarifying question...")
 
@@ -33,10 +33,10 @@ def clarification_node(state: SupportState) -> SupportState:
     llm = ChatGroq(
         api_key=os.environ.get("GROQ_API_KEY"),
         model=os.environ.get("GROQ_CHAT_MODEL", "openai/gpt-oss-120b"),
-        temperature=0.3, # Perfect temperature for slightly creative follow-ups
+        temperature=0.3, 
     )
 
-    # 1. VOICE-OPTIMIZED PROMPT: Strictly forbid TTS-breaking characters
+    # forbid TTS-breaking characters
     system_prompt = SystemMessage(content="""Du bist ein hilfreicher Kaufland-Kundenservice-Assistent an einem Sprachtelefon.
 
 Die vorherige Antwort war nicht sicher genug, um sie dem Nutzer direkt zu geben. Stelle stattdessen
@@ -59,10 +59,10 @@ REGELN FÜR DIE SPRACHAUSGABE (TTS):
         response = llm.invoke([system_prompt, user_prompt])
         clarification_text = response.content.strip()
         
-        # 2. POST-PROCESSING: Strip out hallucinated quotes and markdown just in case
+        # Strip out hallucinated quotes and markdown
         clarification_text = clarification_text.strip('\'"').replace("**", "").replace("*", "")
         
-        # 3. LENGTH GUARDRAIL: If the LLM ignored instructions and wrote an essay, fall back safely
+        # If the LLM ignored instructions and wrote a long response, fall back safely
         if len(clarification_text) > 150:
             print("[Clarification Agent] Warning: LLM generated a question that is too long. Using fallback.")
             clarification_text = CLARIFICATION_FALLBACK_MESSAGE

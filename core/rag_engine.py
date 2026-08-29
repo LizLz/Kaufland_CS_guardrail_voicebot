@@ -11,7 +11,7 @@ class KauflandRAG:
         if not os.path.exists(vector_dir):
             raise FileNotFoundError(f"ChromaDB not found at: {vector_dir}. Please run utility/ingest_data.py first.")
 
-        # 1. Initialize Free Local Embeddings (Must match the ingest script exactly)
+        # 1. Initialize Embeddings
         print("[RAG Engine] Initializing HuggingFace Embeddings...")
         cuda_isavailable = torch.cuda.is_available()
         self.embeddings = HuggingFaceEmbeddings(
@@ -20,7 +20,7 @@ class KauflandRAG:
             encode_kwargs={"normalize_embeddings": True}
         )
         
-        # 2. Load the existing Vector Database (Read-Only)
+        # 2. Load the existing Vector Database
         print("[RAG Engine] Connecting to existing ChromaDB...")
         self.vector_store = Chroma(
             persist_directory=vector_dir, 
@@ -51,14 +51,17 @@ class KauflandRAG:
     def get_all_documents(self) -> tuple[list[str], list[dict]]:
         """
         Returns all document texts + metadatas directly from the Chroma collection.
-        Useful for building a BM25 index and spell-correction vocabulary.
+
         """
-        # We use .get() to pull everything directly from the database instead of a CSV
+
         all_data = self.vector_store.get(include=['documents', 'metadatas'])
         return all_data['documents'], all_data['metadatas']
 
     def retrieve_scored(self, query: str, k: int = 5, score_threshold: float = 0.0) -> list[dict]:
-        """Like retrieve(), but returns individual scored docs for RRF fusion."""
+        """
+        Returns individual scored docs for RRF fusion.
+        
+        """
         results_with_scores = self.vector_store.similarity_search_with_relevance_scores(query, k=k)
         return [
             {"content": doc.page_content, "metadata": doc.metadata, "score": score}

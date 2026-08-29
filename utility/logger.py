@@ -14,9 +14,7 @@ class JSONLogFormatter(logging.Formatter):
         if hasattr(record, "telemetry"):
             log_record.update(record.telemetry)
             
-        # CRITICAL FIX: ensure_ascii=False tells json.dumps to print German umlauts 
-        # (ä, ö, ü, ß) natively instead of escaping them as \u00e4.
-        return json.dumps(log_record, ensure_ascii=False)
+        return json.dumps(log_record, ensure_ascii=False) # Ensure_ascii=False to ensure German umlauts could be printed
 
 def setup_logger(name="KauflandVoiceBot"):
     logger = logging.getLogger(name)
@@ -29,7 +27,7 @@ def setup_logger(name="KauflandVoiceBot"):
         logger.addHandler(handler)
         logger.propagate = False
 
-    # Suppress annoying third-party library logs so they don't flood your JSON logs
+    # Suppress third-party library logs
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 

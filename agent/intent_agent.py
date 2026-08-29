@@ -19,7 +19,7 @@ class IntentDecision(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def normalize_field_name(cls, data):
-        """Accepts alternative naming keys from the LLM just in case."""
+        """Accepts alternative action names from the LLM just in case."""
         if isinstance(data, dict) and "action" not in data:
             for alias in ("routing", "next_step", "decision"):
                 if alias in data:
@@ -31,7 +31,6 @@ class IntentDecision(BaseModel):
 def intent_node(state: SupportState) -> SupportState:
     print("[Intent Agent] Analyzing customer message...")
 
-    # Standard ChatGroq call without fragile structured output wrappers
     llm = ChatGroq(
         api_key=os.environ.get("GROQ_API_KEY"),
         model=os.environ.get("GROQ_INTENT_MODEL", "qwen/qwen3.6-27b"),
@@ -58,18 +57,18 @@ Output format must be strictly JSON, like this:
     final_action = "rag"
     for attempt in range(2):
         try:
-            # 1. Standard text generation (never triggers Groq tool_use or json_mode 400 errors)
+            # 1. Text generation (use json wrapper to avoid json_mode 400 errors)
             response = llm.invoke([system_prompt, user_msg])
             raw_text = response.content.strip()
 
-            # 2. Robust local regex extraction (handles markdown ```json wrappers or extra text)
+            # 2. Regex extraction 
             json_match = re.search(r"\{.*?\}", raw_text, re.DOTALL)
             if not json_match:
                 raise ValueError(f"No JSON object found in LLM output: {raw_text}")
 
             parsed_data = json.loads(json_match.group(0))
 
-            # 3. Strict Pydantic validation & normalization
+            # 3. Pydantic validation & normalization
             decision = IntentDecision.model_validate(parsed_data)
             final_action = decision.action
             break

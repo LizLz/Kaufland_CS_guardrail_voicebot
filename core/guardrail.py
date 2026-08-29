@@ -9,10 +9,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Terms that should NEVER be masked as PII, regardless of what the general
-# NER model guesses. Presidio's de_core_news_lg NER model can misclassify
-# brand/product names as ORGANIZATION entities (e.g. "kauflandpay" was being
-# masked to "<ORGANIZATION>", which corrupted retrieval queries downstream).
+# Terms that should not be masked as PII
 PROTECTED_TERMS = [
     "Kaufland", "Kaufland Pay", "KauflandPay", "kauflandpay",
     "Kaufland Card XTRA", "real.de", "Kaufland.de", "BlueCode", "bluecode",
@@ -33,7 +30,7 @@ class GuardrailsManager:
         self.anonymizer = AnonymizerEngine()
         self.iban_pattern = re.compile(r'\bDE\d{2}\s?(?:\d{4}\s?){4}\d{2}\b', re.IGNORECASE)
 
-        # tag brand terms as separate entities to avoid masking them so they won't be masked
+        # tag brand terms as separate entities to avoid masking them
         brand_recognizer = PatternRecognizer(
             supported_entity="BRAND_TERM",
             deny_list=PROTECTED_TERMS,
@@ -56,8 +53,7 @@ class GuardrailsManager:
     def mask_pii(self, text: str) -> str:
         results = self.analyzer.analyze(text=text, language="de")
 
-        # Find the character spans that our BRAND_TERM recognizer matched —
-        # these are known-safe terms that must never be masked.
+        # Find the character that our BRAND_TERM recognizer matched
         protected_spans = [
             (r.start, r.end) for r in results if r.entity_type == "BRAND_TERM"
         ]
@@ -68,10 +64,7 @@ class GuardrailsManager:
                 for start, end in protected_spans
             )
 
-        # Drop BOTH the BRAND_TERM results themselves AND any other entity
-        # (PERSON, ORGANIZATION, LOCATION, ...) whose span overlaps a protected
-        # term — otherwise the general NER model's guess on the same text
-        # still gets masked even though we "recognized" it as a brand term.
+        # Drop the protected term results
         results = [
             r for r in results
             if r.entity_type != "BRAND_TERM" and not overlaps_protected(r)
@@ -142,8 +135,8 @@ if __name__ == "__main__":
     print(f"Masked:   {guard.mask_pii(test_pii)}")
 
     print("\n--- Testing Brand Term Protection (regression test) ---")
-    # This exact query previously got "kauflandpay" masked as <ORGANIZATION>,
-    # which corrupted the RAG retrieval query. It should now pass through unchanged.
+    # This query previously got "kauflandpay" masked as <ORGANIZATION>,
+    # check the result now
     test_brand = "Wie kann man kauflandpay benutzen?"
     masked_brand = guard.mask_pii(test_brand)
     print(f"Original: {test_brand}")

@@ -13,9 +13,9 @@ from agent.direct_response_agent import direct_response_node
 def route_entry(state: SupportState) -> str:
     """Decides which agent gets the user's message first"""
     if state.get("pending_escalation"):
-        # If the agent is waiting for a Yes/No, skip everything else and go straight to the Escalation Confirmation node
+        # If the agent is waiting for a Yes/No, go straight to the Escalation Confirmation node
         return "escalation_confirmation_node"
-    # Every fresh message goes through guardrails first now, not intent_node
+    # Every fresh message goes through guardrails first
     return "guardrail_node"
 
 
@@ -37,7 +37,7 @@ def route_intent(state: SupportState) -> str:
 def route_after_rag(state: SupportState) -> str:
     """Decides where to go after the RAG Agent"""
     if state.get("action") == "blocked":
-        return END  # Guardrails caught something in retrieved context, stop here
+        return END  # Guardrails caught bad behaviors in retrieved context, stop here
     return "confidence_node"  # Otherwise, grade the information
 
 
@@ -90,10 +90,7 @@ def build_kaufland_graph():
         },
     )
 
-    #    Add the traffic routing rules between nodes.
-    #    Explicit mappings everywhere now (not just at the entry point) so a
-    #    typo'd return value fails loudly with a clear error, rather than a
-    #    confusing runtime KeyError deep inside LangGraph.
+    #    Routing rules between nodes.
     workflow.add_conditional_edges(
         "guardrail_node",
         route_after_guardrail,
@@ -120,14 +117,14 @@ def build_kaufland_graph():
         {"guardrail_node": "guardrail_node", END: END},
     )
 
-    # After clarification or a direct response, the turn is always done
+    # After clarification or a direct response, the turn is done
     workflow.add_edge("clarification_node", END)
     workflow.add_edge("direct_response_node", END)
 
-    # Add Memory (give the bot short-term memory during the chat)
+    # Give the bot short-term memory during the chat
     memory = MemorySaver()
 
-    # Compile the graph into a runnable application
+    # Compile the graph into an application
     return workflow.compile(checkpointer=memory)
 
 

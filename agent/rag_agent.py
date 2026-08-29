@@ -1,20 +1,20 @@
 import os
 import re
 from langchain_groq import ChatGroq
-from langchain_core.messages import SystemMessage, AIMessage
+from langchain_core.messages import SystemMessage, AIMessage, HumanMessage
 from core.state import SupportState
 from core.rag_engine import KauflandRAG
 from core.guardrail import GuardrailsManager
 from core.hybrid_retriever import BM25Retriever, VocabularySpellCorrector, reciprocal_rank_fusion
 
-print("📚 [RAG Agent] Booting up database, guardrails, and hybrid retriever...")
+print("[RAG Agent] Booting up database, guardrails, and hybrid retriever...")
 rag = KauflandRAG()
 guard = GuardrailsManager()
 
 _docs, _metadatas = rag.get_all_documents()
 bm25_retriever = BM25Retriever(documents=_docs, metadatas=_metadatas)
 spell_corrector = VocabularySpellCorrector(documents=_docs)
-print(f"📚 [RAG Agent] Hybrid retriever ready with {len(_docs)} documents indexed.")
+print(f"[RAG Agent] Hybrid retriever ready with {len(_docs)} documents indexed.")
 
 llm = ChatGroq(
     api_key=os.environ.get("GROQ_API_KEY"),
@@ -25,42 +25,40 @@ llm = ChatGroq(
 FALLBACK_MESSAGE = "Dazu habe ich leider keine Information. Möchten Sie mit einem Mitarbeiter sprechen?"
 DENSE_SCORE_THRESHOLD = 0.5
 
-# BM25 scores are unbounded, not a normalized 0-1 similarity, so this is a
-# rough, corpus-specific calibration rather than a probability threshold.
-# Tune against your own corpus's typical scores for a clear lexical match.
+# can be further tuned according to the test
 LEXICAL_STRONG_MATCH_THRESHOLD = 5.0
 
 
 def rag_node(state: SupportState) -> SupportState:
-    print("📚 [RAG Agent] Searching for answers...")
+    """
+    Trust the fused context if EITHER retriever independently found
+    something confidently relevant. Dense-only gating rejected cases
+    where a filler/grammar word (e.g. "der" in "was ist der kaufland
+    pay") shifted the dense embedding enough to drop below threshold,
+    Widening the gate trades a small increase in false-positive
+    risk for a real recall improvement on grammatically-imperfect,
+    voice-transcribed queries
+    
+    """
+    print("[RAG Agent] Searching for answers...")
 
     user_message = state["messages"][-1].content
 
     corrected_query = spell_corrector.correct(user_message)
     if corrected_query != user_message.lower():
-        print(f"📚 [RAG Agent] Query corrected: '{user_message}' -> '{corrected_query}'")
+        print(f"[RAG Agent] Query corrected: '{user_message}' -> '{corrected_query}'")
 
     dense_docs = rag.retrieve_scored(corrected_query, k=5, score_threshold=0.0)
     lexical_docs = bm25_retriever.search(corrected_query, top_k=5)
     fused_docs = reciprocal_rank_fusion([dense_docs, lexical_docs], top_k=4)
 
-    # Trust the fused context if EITHER retriever independently found
-    # something confidently relevant. Dense-only gating rejected cases
-    # where a filler/grammar word (e.g. "der" in "was ist der kaufland
-    # pay") shifted the dense embedding enough to drop below threshold,
-    # even though BM25's lexical match on "kaufland pay" was essentially
-    # unaffected by the filler word (BM25 gives stopwords near-zero
-    # weight). Widening the gate trades a small increase in false-positive
-    # risk for a real recall improvement on grammatically-imperfect,
-    # voice-transcribed queries — RAG generation and confidence grading
-    # downstream still act as further checks on anything retrieved.
     best_dense_score = max((d["score"] for d in dense_docs), default=0.0)
     best_lexical_score = max((d["score"] for d in lexical_docs), default=0.0)
     lexical_found_strong_match = best_lexical_score >= LEXICAL_STRONG_MATCH_THRESHOLD
 
     if not fused_docs or (best_dense_score < DENSE_SCORE_THRESHOLD and not lexical_found_strong_match):
         print(
-            f"📚 [RAG Agent] No confident match "
+            f"[RAG Agent] No confident match "
             f"(dense: {best_dense_score:.3f}, lexical: {best_lexical_score:.2f}). Using fallback."
         )
         return {
@@ -73,12 +71,12 @@ def rag_node(state: SupportState) -> SupportState:
     for doc in fused_docs:
         is_injection, _ = guard.check_with_llama_guard(doc["content"])
         if is_injection:
-            print("📚 [RAG Agent] Excluding a retrieved document flagged as unsafe.")
+            print("[RAG Agent] Excluding a retrieved document flagged as unsafe.")
             continue
         safe_doc_contents.append(doc["content"])
 
     if not safe_doc_contents:
-        print("📚 [RAG Agent] All retrieved documents were flagged. Using fallback.")
+        print("[RAG Agent] All retrieved documents were flagged. Using fallback.")
         return {
             "messages": [AIMessage(content=FALLBACK_MESSAGE)],
             "retrieved_context": "",
@@ -118,7 +116,7 @@ Wenn die Fakten die Antwort nicht enthalten, rate nicht. Antworte exakt mit: "{F
         print(f"[RAG Agent] LLM call failed: {e}")
         final_message = AIMessage(content="Entschuldigung, es gab ein technisches Problem. Bitte versuchen Sie es erneut.")
 
-    print("📚 [RAG Agent] Answer generated.")
+    print("[RAG Agent] Answer generated.")
 
     return {
         "messages": [final_message],
@@ -129,10 +127,9 @@ Wenn die Fakten die Antwort nicht enthalten, rate nicht. Antworte exakt mit: "{F
 
 # --- Test Block ---
 if __name__ == "__main__":
-    from langchain_core.messages import HumanMessage
 
     if not os.environ.get("GROQ_API_KEY"):
-        print("⚠️ WARNING: GROQ_API_KEY not found in environment!")
+        print("WARNING: GROQ_API_KEY not found in environment!")
     else:
         test_cases = [
             "Wie funktioniert Kaufland Pay?",
@@ -140,7 +137,7 @@ if __name__ == "__main__":
             "wue benutze ich kaufland pay",
             "was ist bluecode",
             "wie ist kauflnd card xtra",
-            "was ist der kaufland pay",  # NEW — the filler-word regression case
+            "was ist der kaufland pay",  # test filler-word case
         ]
 
         for query in test_cases:

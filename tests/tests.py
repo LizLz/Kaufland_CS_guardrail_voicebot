@@ -1,16 +1,9 @@
-"""
-tests/tests.py
-
-Production-Grade Test Suite for the Kaufland Support Guardrail Bot.
-Optimized for stable execution on Windows environments prior to submission.
-"""
-
 import os
 import sys
 
-# --- CRITICAL WINDOWS PYTORCH STABILIZATION ---
-# These environment variables must be set BEFORE any torch, sentence_transformers, 
-# or HuggingFace libraries are imported. They prevent the C++ memory access violation 
+
+# These environment variables must be set before any torch, sentence_transformers, 
+# or HuggingFace libraries are imported to prevent the C++ memory access violation 
 # and OpenMP DLL conflicts that crash pytest on Windows machines.
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -33,7 +26,7 @@ integration = pytest.mark.integration
 
 
 def base_state(**overrides):
-    """A complete, valid SupportState dict with sensible defaults."""
+    """A complete SupportState dict with defaults."""
     state = {
         "messages": [],
         "action": "",

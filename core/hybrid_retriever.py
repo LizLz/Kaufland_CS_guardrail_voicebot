@@ -1,4 +1,3 @@
-# core/hybrid_retriever.py
 import re
 from rank_bm25 import BM25Okapi
 from rapidfuzz import process, fuzz
@@ -26,7 +25,7 @@ class BM25Retriever:
 
 
 class VocabularySpellCorrector:
-    """Builds candidates from your own corpus — no hand-maintained list.
+    """Builds candidates from the knowledge base.
     Handles both typos (kauflnd -> kaufland) and merged words
     (kauflandpay -> kaufland pay), distinguishing the two by whether the
     best whole-word match is a close length fit."""

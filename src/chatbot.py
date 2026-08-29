@@ -155,7 +155,7 @@ class LiveTranscriber:
 class GraphProcessor:
     """Manages interaction with the Kaufland LangGraph workflow."""
     def __init__(self, config: Config):
-        from src.graph import build_kaufland_graph  # matches the rest of the project's core.* import convention
+        from src.graph import build_kaufland_graph  
         import uuid
         from langchain_core.messages import HumanMessage
 
@@ -165,12 +165,7 @@ class GraphProcessor:
         self._HumanMessage = HumanMessage
 
     def _full_state(self, user_text: str) -> dict:
-        """Always initialize every SupportState field explicitly. A
-        previous version only set 'messages', leaving every other field
-        absent (not even a default) on the very first turn of a session —
-        this matches a known failure pattern seen earlier in this project
-        where nodes assumed fields like 'pending_escalation' were always
-        present."""
+        """Initialize every SupportState on the very first turn of a session."""
         return {
             "messages": [self._HumanMessage(content=user_text)],
             "action": "",
@@ -186,8 +181,7 @@ class GraphProcessor:
     async def generate_response(self, user_text: str) -> dict:
         start_time = time.time()
         
-        # Pass only the new message dict. This allows MemorySaver to retain 
-        # persistent state like failed_attempt_count and pending_escalation across turns.
+        # Pass only the new message dict to allow MemorySaver to retain persistent state
         state_in = {"messages": [self._HumanMessage(content=user_text)]}
         result = await self.app.ainvoke(state_in, config=self.graph_config)
         
@@ -212,9 +206,7 @@ class SpeechSynthesizer:
         self.last_ttfb = 0
 
     async def speak(self, text: str):
-        """One TTS request, one player process, per full answer — avoids
-        the inter-sentence pauses caused by spawning a new process and
-        making a new HTTP request per sentence."""
+        """Play TTS audio for the given text."""
         headers = {"Authorization": f"Token {self.api_key}", "Content-Type": "application/json"}
         payload = {"text": text}
 

@@ -2,11 +2,11 @@ from langchain_core.messages import AIMessage, HumanMessage
 from core.state import SupportState
 from core.guardrail import GuardrailsManager
 
-# Initialized once at module load, like the other agent files
+
 print("[Guardrail Node] Initializing guardrails...")
 guard = GuardrailsManager()
 
-# Voice-optimized, friendly German refusal messages
+
 SECURITY_BLOCK_MESSAGE = "Entschuldigung, aus Sicherheitsgründen kann ich diese Anfrage leider nicht bearbeiten."
 TECHNICAL_ERROR_MESSAGE = "Entschuldigung, es gab ein technisches Problem. Bitte versuchen Sie es erneut."
 
@@ -19,7 +19,6 @@ def guardrail_node(state: SupportState) -> SupportState:
     """
     print("[Guardrail Node] Validating input...")
 
-    # 1. Grab the actual message object, not just the text
     last_message = state["messages"][-1]
     raw_user_message = last_message.content
 
@@ -28,26 +27,24 @@ def guardrail_node(state: SupportState) -> SupportState:
         safe_user_message = guard.validate_input(raw_user_message)
         
     except ValueError as e:
-        # A prompt injection or malicious payload was detected!
-        print(f"🛡️ [Guardrail Node] Blocked malicious input: {e}")
+        print(f"[Guardrail Node] Blocked malicious input: {e}")
         return {
             "messages": [AIMessage(content=SECURITY_BLOCK_MESSAGE)],
             "action": "blocked",
         }
         
     except Exception as e:
-        # Something crashed inside the guardrail logic
-        print(f"⚠️ [Guardrail Node] Unexpected error during validation: {e}")
+        print(f"[Guardrail Node] Unexpected error during validation: {e}")
         return {
             "messages": [AIMessage(content=TECHNICAL_ERROR_MESSAGE)],
             "action": "blocked",
         }
 
-    # 2. Overwrite the raw text with the sanitized text
-    # By using the SAME id as the incoming message, LangGraph replaces the original
+    # Overwrite the raw text with the sanitized text
+    # By using the same id as the incoming message, LangGraph replaces the original message
     safe_msg = HumanMessage(content=safe_user_message, id=last_message.id)
 
-    print("✅ [Guardrail Node] Input is safe. Proceeding.")
+    print("[Guardrail Node] Input is safe. Proceeding.")
     return {
         "messages": [safe_msg],
         "action": "validated",
