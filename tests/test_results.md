@@ -8,6 +8,6 @@ pytest tests/test_cases.py -m "not integration"  # subset, no API key needed
 ```
 
 ## Results by module
-![Test Result]("../Image/test.png")
+![Test Result](/image/test.png)
 
 
