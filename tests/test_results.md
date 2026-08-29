@@ -8,6 +8,6 @@ pytest tests/test_cases.py -m "not integration"  # subset, no API key needed
 ```
 
 ## Results by module
-![Test Result]("..\\guardrail\\Kaufland_CS_guardrail\\Image\\test.png")
+![Test Result]("../Image/test.png")
 
 
