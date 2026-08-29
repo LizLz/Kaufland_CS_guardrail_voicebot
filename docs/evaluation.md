@@ -1,0 +1,20 @@
+# Evaluation & Reflection
+
+## What Worked Well
+- **Deterministic State Routing via LangGraph (`src/graph.py`)**: Decoupling intent classification, guardrails, retrieval, and confidence grading into isolated nodes eliminated chaotic agent loops and made failure tracing straightforward.
+- **The Two-Strike Voice UX**: Balancing automated assistance with graceful human fallback prevented frustrating conversational dead-ends while respecting voice channel constraints.
+- **Robust PII & Brand Protection**: Preserving protected brand keywords while successfully scrubbing real PII ensured high retrieval precision without compromising user privacy.
+- **Adversarial Test Coverage (`tests/tests.py`)**: Rigorous test cases successfully caught and verified regression fixes for intent routing aliases, Windows thread crashes, and escalation memory persistence.
+
+## Limitations & Remaining Gaps
+- **Static Knowledge Base**: Without CRM or live order database integration, the bot cannot answer account-specific questions (e.g., *"Where is my delivery?"* or *"Check my account balance"*).
+- **Latency Overheads**: Sequential multi-node LLM calls introduce noticeable latency before audio playback begins in voice mode, remaining bounded by network and LLM inference speeds.
+
+## Surprises During Implementation
+- **STT Phonetic Drift**: Speech-to-text engines frequently merge brand terms into single tokens (e.g., `"kauflandpay"`), which initially broke vector embedding similarity matches until corpus-derived spell correction and regex normalization were implemented.
+- **Checkpointer Scalar Overwrites**: Passing full state dictionaries via `_full_state()` on every turn in production accidentally wiped out multi-turn scalar counters like `failed_attempt_count`. Fixing this to pass only message payloads preserved checkpoint state across turns.
+- **Windows PyTorch DLL Collisions**: Running multi-threaded test runners on Windows triggered low-level C++ memory access violations, solved by configuring thread limits and duplicate OpenMP allowances at entry points.
+
+## Future Improvements 
+- Implement mid-generation streaming TTS to reduce Time-To-First-Byte (TTFB) latency.
+- Integrate lightweight webhook backends for live order status checking and authenticated user session handling.
