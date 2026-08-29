@@ -32,10 +32,16 @@ env/
 .env
 !.env.example
 
-# Vector databases & local scraped data artifacts
+# Ignore the local Chroma vector database directory
+data/chroma_db/
 .chroma/
+
+# Ignore database files
 *.sqlite3
 *.db
+
+# Allow CSV files inside the data directory to be tracked
+!data/*.csv
 
 # Testing & Coverage
 .pytest_cache/
