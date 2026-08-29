@@ -6,7 +6,6 @@ The core deliverable of this project is **adversarial safety architecture**: rob
 
 - **Architecture & Trade-offs:** See [`DESIGN.md`](./DESIGN.md)
 - **Evaluation & Reflection:** See [`docs/evaluation.md`](./docs/evaluation.md)
-- **Concrete Trace Logs:** See [`examples/example_runs.md`](./examples/example_runs.md)
 
 ---
 
@@ -63,6 +62,7 @@ The workflow is managed as a state machine (`SupportState`) via LangGraph with s
 - **Account-Specific / Order-Specific Backend Data:** Operates entirely on a curated FAQ knowledge base without live CRM database integration.
 
 ## Project Structure
+```text
 Kaufland_CS_guardrail/
 ├── DESIGN.md                  # Comprehensive architectural documentation & trade-offs
 ├── README.md                  # Project overview, setup, and navigation
@@ -94,6 +94,7 @@ Kaufland_CS_guardrail/
 │   └── demo.ipynb              # demonstration demo
 └── docs/
     └── evaluation.md          # Architectural reflection, metrics, and limitations
+  ```
 
 ## Setup & Installation
 ### Install Dependencies
@@ -101,12 +102,16 @@ Kaufland_CS_guardrail/
 
 ### Configure Environment Variables
 Create a .env file in the project root directory:
-`GROQ_API_KEY=your-groq-api-key
-DEEPGRAM_API_KEY=your-deepgram-api-key`
+```bash
+GROQ_API_KEY=your-groq-api-key
+DEEPGRAM_API_KEY=your-deepgram-api-key
+```
 
 ### Build the Knowledge Base
-`python utility/faq_crawl.py   # Scrapes Kaufland's public FAQ pages into CSV
-python utility/vector.py      # Builds the Chroma vector store from the CSV`
+```bash
+python utility/faq_crawl.py   # Scrapes Kaufland's public FAQ pages into CSV
+python utility/vector.py      # Builds the Chroma vector store from the CSV
+```
 
 ## How to run
 ### Text Mode 
@@ -120,5 +125,7 @@ Prerequisite: Requires an active microphone and ffplay (bundled with ffmpeg) ins
 
 ### Test the Model
 The project includes an adversarial test suite designed to validate failure modes, regression fixes, and state memory persistence:
-`pytest tests/tests.py -v               # Full test suite (requires GROQ_API_KEY)
-pytest tests/tests.py -m "not integration" # Fast unit tests only`
+```bash
+pytest tests/tests.py -v               # Full test suite (requires GROQ_API_KEY)
+pytest tests/tests.py -m "not integration" # Fast unit tests only
+```
