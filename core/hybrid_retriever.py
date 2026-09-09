@@ -1,18 +1,22 @@
 import re
+import os
+from nltk.stem.snowball import SnowballStemmer
+from collections import Counter
 from rank_bm25 import BM25Okapi
-from rapidfuzz import process, fuzz
-
+from symspellpy import SymSpell
 
 class BM25Retriever:
     def __init__(self, documents: list[str], metadatas: list[dict] | None = None):
+        self.stemmer = SnowballStemmer("german") # Initialize German stemmer
         self.documents = documents
         self.metadatas = metadatas or [{} for _ in documents]
         self.tokenized_corpus = [self._tokenize(doc) for doc in documents]
         self.bm25 = BM25Okapi(self.tokenized_corpus)
 
-    @staticmethod
-    def _tokenize(text: str) -> list[str]:
-        return re.findall(r"\w+", text.lower())
+    def _tokenize(self, text: str) -> list[str]:
+        # Extract words and stem them down to their root form
+        words = re.findall(r"\w+", text.lower())
+        return [self.stemmer.stem(w) for w in words]
 
     def search(self, query: str, top_k: int = 5) -> list[dict]:
         tokenized_query = self._tokenize(query)
@@ -24,57 +28,54 @@ class BM25Retriever:
         ]
 
 
-class VocabularySpellCorrector:
-    """Builds candidates from the knowledge base.
-    Handles both typos (kauflnd -> kaufland) and merged words
-    (kauflandpay -> kaufland pay), distinguishing the two by whether the
-    best whole-word match is a close length fit."""
+class SymSpellCorrector:
+    def __init__(self, documents: list[str], max_edit_distance: int = 2):
+        self.sym_spell = SymSpell(
+            max_dictionary_edit_distance=max_edit_distance,
+            prefix_length=7,
+        )
+        
+        # Define where to save the pre-compiled dictionary
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.dict_path = os.path.join(script_dir, "..", "data", "symspell_dict.txt")
 
-    def __init__(self, documents: list[str], min_word_len: int = 3):
-        vocab = set()
-        for doc in documents:
-            vocab.update(re.findall(r"\w+", doc.lower()))
-        self.vocab = list(vocab)
-        self.vocab_set = set(w for w in vocab if len(w) >= min_word_len)
+        # 1. FAST PATH: If the dictionary already exists, load it instantly
+        if os.path.exists(self.dict_path):
+            print("[SymSpell] Loading pre-compiled dictionary from disk (Instant)...")
+            self.sym_spell.load_dictionary(self.dict_path, term_index=0, count_index=1)
+        
+        # 2. SLOW PATH: First run only (or if you add a new larger corpus)
+        else:
+            print("[SymSpell] First run: Building and caching dictionary (This will take a moment)...")
+            words = []
+            for doc in documents:
+                words.extend(re.findall(r"\w+", doc.lower()))
+            
+            word_counts = Counter(words)
+            
+            # Ensure the directory exists
+            os.makedirs(os.path.dirname(self.dict_path), exist_ok=True)
+            
+            # Save it to a text file for future instant loads
+            with open(self.dict_path, "w", encoding="utf-8") as f:
+                for word, count in word_counts.items():
+                    # SymSpell expects format: "word count"
+                    f.write(f"{word} {count}\n")
+                    self.sym_spell.create_dictionary_entry(word, count)
 
-    def _best_match(self, token: str, cutoff: int) -> str | None:
-        match = process.extractOne(token, self.vocab, scorer=fuzz.ratio)
-        return match[0] if match and match[1] >= cutoff else None
+    def correct(self, query: str) -> str:
+        clean_query = query.lower().strip()
+        if not clean_query:
+            return query
 
-    def _try_split(self, token: str, cutoff: int) -> str | None:
-        if len(token) < 6:
-            return None
-        for i in range(3, len(token) - 2):
-            left, right = token[:i], token[i:]
-            if len(right) < 3:
-                continue
-            left_match = self._best_match(left, cutoff)
-            right_match = self._best_match(right, cutoff)
-            if left_match and right_match:
-                return f"{left_match} {right_match}"
-        return None
+        # lookup_compound handles typos, merged tokens, and punctuation in a single pass
+        suggestions = self.sym_spell.lookup_compound(
+            clean_query,
+            max_edit_distance=2,
+            ignore_non_words=True,
+        )
 
-    def correct(self, query: str, cutoff: int = 82) -> str:
-        corrected = []
-        for token in query.lower().split():
-            if token in self.vocab_set or len(token) < 3:
-                corrected.append(token)
-                continue
-
-            whole_match = self._best_match(token, cutoff)
-
-            if whole_match and abs(len(token) - len(whole_match)) <= 2:
-                corrected.append(whole_match)
-                continue
-
-            split_match = self._try_split(token, cutoff) if len(token) >= 6 else None
-            if split_match:
-                corrected.append(split_match)
-                continue
-
-            corrected.append(whole_match if whole_match else token)
-
-        return " ".join(corrected)
+        return suggestions[0].term if suggestions else query
 
 
 def reciprocal_rank_fusion(result_lists: list[list[dict]], key: str = "content", k: int = 60, top_k: int = 5) -> list[dict]:
@@ -98,7 +99,7 @@ if __name__ == "__main__":
 
     print(f"Loaded {len(docs)} documents for testing.\n")
 
-    corrector = VocabularySpellCorrector(docs)
+    corrector = SymSpellCorrector(docs)
     bm25 = BM25Retriever(docs, metadatas)
 
     test_queries = [

@@ -1,10 +1,12 @@
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
-from core.state import SupportState
+from concurrent.futures import ThreadPoolExecutor
+import time
 
-from agent.guardrail_agent import guardrail_node
+from agent.guardrail_agent import get_guardrails_manager, guardrail_node
+from agent.rag_agent import get_rag_engine, rag_node
+from core.state import SupportState
 from agent.intent_agent import intent_node
-from agent.rag_agent import rag_node
 from agent.confidence_agent import confidence_node, escalation_confirmation_node
 from agent.clarification_agent import clarification_node
 from agent.direct_response_agent import direct_response_node
@@ -29,9 +31,14 @@ def route_after_guardrail(state: SupportState) -> str:
 def route_intent(state: SupportState) -> str:
     """Decides which agent gets the user's message after the Intent Agent"""
     action = state.get("action")
+    
     if action == "rag":
         return "rag_node"
-    return "direct_response_node"
+    else:
+        # Covers "small_talk", "policy_refusal", "out_of_domain", AND "escalate".
+        # We send direct escalations here so the direct_response_node can output a 
+        # predefined handover message without expecting a "Ja/Nein" confirmation.
+        return "direct_response_node"
 
 
 def route_after_rag(state: SupportState) -> str:
@@ -67,12 +74,22 @@ def route_after_escalation_confirmation(state: SupportState) -> str:
 
 # --- Build the Graph ---
 
-
 def build_kaufland_graph():
-    # Initialize the graph with pre-defined states
+    print("[System] Pre-loading Wolf Defender and RAG engines in parallel...")
+    start_time = time.time()
+
+    # Concurrent model pre-loading
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        future_guard = executor.submit(get_guardrails_manager)
+        future_rag = executor.submit(get_rag_engine)
+        future_guard.result()
+        future_rag.result()
+
+    print(f"[System] All models initialized in {(time.time() - start_time):.2f} seconds.")
+
     workflow = StateGraph(SupportState)
 
-    # Add all agent nodes
+    # Register all graph nodes (Ensures 'intent_node' and others exist)
     workflow.add_node("guardrail_node", guardrail_node)
     workflow.add_node("intent_node", intent_node)
     workflow.add_node("rag_node", rag_node)
@@ -81,7 +98,6 @@ def build_kaufland_graph():
     workflow.add_node("escalation_confirmation_node", escalation_confirmation_node)
     workflow.add_node("direct_response_node", direct_response_node)
 
-    # Set the entry point (Using custom route_entry logic)
     workflow.set_conditional_entry_point(
         route_entry,
         {
@@ -90,41 +106,16 @@ def build_kaufland_graph():
         },
     )
 
-    #    Routing rules between nodes.
-    workflow.add_conditional_edges(
-        "guardrail_node",
-        route_after_guardrail,
-        {"intent_node": "intent_node", END: END},
-    )
-    workflow.add_conditional_edges(
-        "intent_node",
-        route_intent,
-        {"rag_node": "rag_node", "direct_response_node": "direct_response_node"},
-    )
-    workflow.add_conditional_edges(
-        "rag_node",
-        route_after_rag,
-        {"confidence_node": "confidence_node", END: END},
-    )
-    workflow.add_conditional_edges(
-        "confidence_node",
-        route_after_confidence,
-        {"clarification_node": "clarification_node", END: END},
-    )
-    workflow.add_conditional_edges(
-        "escalation_confirmation_node",
-        route_after_escalation_confirmation,
-        {"guardrail_node": "guardrail_node", END: END},
-    )
+    workflow.add_conditional_edges("guardrail_node", route_after_guardrail, {"intent_node": "intent_node", END: END})
+    workflow.add_conditional_edges("intent_node", route_intent, {"rag_node": "rag_node", "direct_response_node": "direct_response_node"})
+    workflow.add_conditional_edges("rag_node", route_after_rag, {"confidence_node": "confidence_node", END: END})
+    workflow.add_conditional_edges("confidence_node", route_after_confidence, {"clarification_node": "clarification_node", END: END})
+    workflow.add_conditional_edges("escalation_confirmation_node", route_after_escalation_confirmation, {"guardrail_node": "guardrail_node", END: END})
 
-    # After clarification or a direct response, the turn is done
     workflow.add_edge("clarification_node", END)
     workflow.add_edge("direct_response_node", END)
 
-    # Give the bot short-term memory during the chat
     memory = MemorySaver()
-
-    # Compile the graph into an application
     return workflow.compile(checkpointer=memory)
 
 
@@ -204,6 +195,17 @@ if __name__ == "__main__":
     print(f"Action: {result6['action']} | Tier: {result6.get('confidence_tier')} | Pending: {result6.get('pending_escalation')}")
     print(f"Bot: {result6['messages'][-1].content}\n")
 
+    print("--- Turn 6b: User clarifies their typo'd question ---")
+    print("    (Testing if memory correctly routes the clarification back to RAG)")
+    
+    state_in_6b = {
+        "messages": [HumanMessage(content="Oh sorry, ich meinte: Wie bezahle ich mit der Kaufland Pay App?")]
+    }
+    
+    result6b = app.invoke(state_in_6b, config=config_6)
+    print(f"Action: {result6b['action']} | Tier: {result6b.get('confidence_tier')}")
+    print(f"Bot: {result6b['messages'][-1].content[:150]}...\n")
+
     print("--- Turn 7: Requesting someone else's account access (should refuse) ---")
     thread_id_7 = str(uuid.uuid4())
     config_7 = {"configurable": {"thread_id": thread_id_7}}
@@ -227,3 +229,36 @@ if __name__ == "__main__":
     }   
     result8 = app.invoke(state_in_8, config=config_8)
     print(f"Action: {result8['action']} | Bot: {result8['messages'][-1].content}\n")
+
+    
+    print("--- Turn 9: Immediate Escalation (Front-door human request) ---")
+    print("    (Testing the route_intent fix to ensure it doesn't loop)")
+    thread_id_9 = str(uuid.uuid4())
+    config_9 = {"configurable": {"thread_id": thread_id_9}}
+    state_in_9 = {
+        "messages": [HumanMessage(content="Das System funktioniert nicht! Ich will sofort mit einem echten Mitarbeiter sprechen!")],
+        "action": "", "retrieved_context": "", "confidence_score": 0.0,
+        "confidence_tier": "", "escalation_ticket": {}, "pending_escalation": False,
+        "escalation_retry_count": 0,
+    }
+    result9 = app.invoke(state_in_9, config=config_9)
+    print(f"Action: {result9['action']} | Bot: {result9['messages'][-1].content}\n")
+
+    print("--- Turn 10: Successful Escalation Confirmation (User says 'Ja') ---")
+    # First, force an escalation offer
+    thread_id_10 = str(uuid.uuid4())
+    config_10 = {"configurable": {"thread_id": thread_id_10}}
+    state_in_10 = {
+        "messages": [HumanMessage(content="Gibt es in der Filiale einen Geldautomaten?")],
+        "action": "", "retrieved_context": "", "confidence_score": 0.0,
+        "confidence_tier": "", "escalation_ticket": {}, "pending_escalation": False,
+        "escalation_retry_count": 0,
+    }
+    app.invoke(state_in_10, config=config_10) # Bot offers human
+    
+    # Now, user replies "Ja"
+    state_in_10_reply = {"messages": [HumanMessage(content="Ja, bitte!")]}
+    result10 = app.invoke(state_in_10_reply, config=config_10)
+    print(f"Action: {result10['action']} | Pending: {result10.get('pending_escalation')}")
+    print(f"Bot: {result10['messages'][-1].content}\n")
+

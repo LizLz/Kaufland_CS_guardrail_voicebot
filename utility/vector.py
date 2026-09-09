@@ -69,10 +69,10 @@ def build_vector_database(force_rebuild: bool = False):
         return
 
     # Initialize Embeddings
-    print("Initializing HuggingFace Embeddings (BAAI/bge-m3)...")
+    print("Initializing HuggingFace Embeddings (intfloat/multilingual-e5-base)...")
     cuda_isavailable = torch.cuda.is_available()
     embeddings = HuggingFaceEmbeddings(
-        model_name="BAAI/bge-m3",  # multilingual, handles German text
+        model_name="intfloat/multilingual-e5-base",  # multilingual, handles German text [previously BAAI/bge-m3]
         model_kwargs={"device": "cuda" if cuda_isavailable else "cpu"},
         encode_kwargs={"normalize_embeddings": True}
     )

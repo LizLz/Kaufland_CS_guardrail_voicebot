@@ -8,24 +8,22 @@ class SupportState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
     
     action: Literal[
-    # --- Guardrail Agent Actions ---
-    "validated",              # Input or retrieved context passed all safety checks successfully
-    "blocked",                # Guardrails caught a prompt injection or safety violation
-
-    # --- Intent Agent Router Actions ---
-    "rag",                    # Query requires factual knowledge base search (routes to rag_node)
-    "answer",                 # Query is small talk or a conversational greeting (routes to direct_response_node)
-    "escalate",               # System is transferring the user to human support
-    "refuse_unauthorized_access", # Attempt to access/reset another user's account data (refused safely)
-    "refuse_action_request",  # Request for an unsupported action like crediting points/refunds (refused safely)
-    "out_of_domain",          # Query is completely unrelated to Kaufland (weather, politics...)
-
-    # --- Confidence & Fallback Actions ---
-    "answered",               # High confidence retrieval
-    "needs_clarification",    # Medium confidence retrieval and triggers a voice-optimized clarification question
-    "awaiting_confirmation",  # Low confidence or max failure threshold reached and triggers the Two-Strike human support offer
-    "reroute"                 # User replied to the escalation offer with a new question instead of Yes/No
-]
+            # 1. Core Intents (From Intent Agent)
+            "rag",                    # Search the knowledge base
+            "escalate",               # Transfer to human
+            
+            # 2. Hardcoded Direct Responses (Grouped together)
+            "small_talk",             # (Formerly "answer")
+            "out_of_domain",          # Weather, politics, etc.
+            "policy_refusal",         # (Combines unauthorized_access & action_request)
+            
+            # 3. System Interventions
+            "blocked",                # Guardrails caught an injection
+            "needs_clarification",    # RAG confidence was medium
+            "awaiting_confirmation",# Low confidence, waiting for yes/no to escalate 
+            "answered",             # Task successfully completed / interaction finished 
+            "reroute"                 # User ignored the escalation prompt and asked a new question
+        ]
     
     # The context retrieved from chromaDB for the current user query, used to provide context to the AI for generating a response.
     retrieved_context: str

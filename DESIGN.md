@@ -4,6 +4,18 @@
 
 Kaufland's app bundles a loyalty system (points redeemable for goods), an account system, and an in-app payment system (Kaufland Pay, built on Bluecode, with optional bank-card linking for QR-code payment). That combination gives the app real financial-app characteristics inside a grocery app, which makes it a meaningful testbed for guardrails: users have genuine questions worth a voice interface (easier than scrolling a long FAQ or waiting on hold), but the same account/payment surface is exactly what an adversarial user might try to exploit.
 
+## System Architecture & Deployment
+```text
+[Microphone / Audio Input] 
+        │ (Live Audio Stream)
+        ▼
+[Voice Assistant Orchestrator (`src/chatbot.py`)]
+        │
+        ├──> [Guardrail & PII Node] (Wolf Defender + Presidio + spaCy `de_core_news_md`)
+        ├──> [LangGraph State Machine (`src/graph.py`)]
+        └──> [Hybrid RAG Engine] (Dense E5 + BM25 + SymSpell + RRF)
+```
+
 ## Failure modes the guardrails target
 
 **1. PII exposure.** User input is masked (names, IBANs) before it reaches any LLM call using Presidio + spaCy German NER for names/entities, alongside a regex layer for structured PII (IBAN) that NER alone does not reliably catch.

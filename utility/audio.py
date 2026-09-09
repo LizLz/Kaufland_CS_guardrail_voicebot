@@ -24,31 +24,31 @@ class Microphone:
         self.channels = channels
 
         self._stream = None
-        self._loop = asyncio.get_running_loop()
-
+        self._loop = None
         self._chunk_count = 0
 
     def _callback(self, indata, frames, time_info, status):
         """Called by sounddevice whenever new microphone audio arrives."""
-
         if status:
             print(f"[Microphone Warning] {status}")
 
         # RawInputStream with int16 gives raw PCM bytes.
         audio_bytes = bytes(indata)
-
         self._chunk_count += 1
 
-        self._loop.call_soon_threadsafe(
-            self.send_callback,
-            audio_bytes,
-        )
+        if self._loop and self._loop.is_running():
+            self._loop.call_soon_threadsafe(
+                self.send_callback,
+                audio_bytes,
+            )
 
     def start(self):
         """Start capturing microphone audio."""
-
         if self._stream is not None:
             return
+
+        # Capture the active loop safely when recording actually starts
+        self._loop = asyncio.get_running_loop()
 
         self._stream = sd.RawInputStream(
             samplerate=self.samplerate,
@@ -58,12 +58,10 @@ class Microphone:
         )
 
         self._stream.start()
-
         print("[Microphone] Recording started.")
 
     def stop(self):
         """Stop and close the microphone."""
-
         if self._stream is not None:
             self._stream.stop()
             self._stream.close()

@@ -18,12 +18,26 @@ def clarification_node(state: SupportState) -> SupportState:
     """
     print("[Clarification Agent] Asking a clarifying question...")
 
-    user_msg = state["messages"][-2].content
-    weak_answer = state["messages"][-1].content
+    messages = state.get("messages", [])
+    user_msg = ""
+    weak_answer = ""
+    for msg in reversed(messages):
+        if not weak_answer and isinstance(msg, AIMessage):
+            weak_answer = getattr(msg, "content", "")
+        elif weak_answer and not user_msg and isinstance(msg, HumanMessage):
+            user_msg = getattr(msg, "content", "")
+            break
+
+    # Fallback slice if types are generic
+    if not user_msg and len(messages) >= 2:
+        user_msg = getattr(messages[-2], "content", str(messages[-2]))
+    if not weak_answer and len(messages) >= 1:
+        weak_answer = getattr(messages[-1], "content", str(messages[-1]))
+
     facts = state.get("retrieved_context", "")
 
     if not facts.strip():
-        print("[Clarification Agent] No relevant context available — using generic clarification.")
+        print("[Clarification Agent] No relevant context available, so use generic clarification.")
         return {
             "messages": [AIMessage(content=NO_CONTEXT_CLARIFICATION_MESSAGE)],
             "action": "needs_clarification",

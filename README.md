@@ -88,6 +88,7 @@ Kaufland_CS_guardrail/
 │   ├── audio.py               # Microphone capturing live sound
 │   └── logger.py              # Log management & visualization
 ├── data/                      # Scraped CSV & Chroma database artifacts
+│   └── kaufland_faqs.csv        # Scraped FAQ data from Kaufland's public pages
 ├── tests/
 │   └── tests.py               # Comprehensive adversarial test suite
 ├── examples/
@@ -105,6 +106,13 @@ Create a .env file in the project root directory:
 ```bash
 GROQ_API_KEY=your-groq-api-key
 DEEPGRAM_API_KEY=your-deepgram-api-key
+```
+
+For Windows users, PyTorch and Hugging Face models can occasionally trigger OpenMP runtime collisions (`Error #15: Initializing libiomp5md.dll`) or memory access violations. Set these environment variables in your terminal before running scripts or tests:
+**Bash:**
+```bash
+export KMP_DUPLICATE_LIB_OK=TRUE
+export OMP_NUM_THREADS=1
 ```
 
 ### Build the Knowledge Base
@@ -126,6 +134,5 @@ Prerequisite: Requires an active microphone and ffplay (bundled with ffmpeg) ins
 ### Test the Model
 The project includes an adversarial test suite designed to validate failure modes, regression fixes, and state memory persistence:
 ```bash
-pytest tests/tests.py -v               # Full test (requires GROQ_API_KEY)
-pytest tests/tests.py -m "not integration" # Fast unit tests only
+python -m pytest tests/tests.py -v               
 ```

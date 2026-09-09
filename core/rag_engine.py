@@ -15,7 +15,7 @@ class KauflandRAG:
         print("[RAG Engine] Initializing HuggingFace Embeddings...")
         cuda_isavailable = torch.cuda.is_available()
         self.embeddings = HuggingFaceEmbeddings(
-            model_name="BAAI/bge-m3",
+            model_name="intfloat/multilingual-e5-base",
             model_kwargs={"device": "cuda" if cuda_isavailable else "cpu"},
             encode_kwargs={"normalize_embeddings": True}
         )
@@ -31,7 +31,8 @@ class KauflandRAG:
 
     def retrieve(self, query: str, k: int = 4, score_threshold: float = 0.5) -> str:
         """Searches the vector database for the top 'k' most relevant FAQs."""
-        results_with_scores = self.vector_store.similarity_search_with_relevance_scores(query, k=k)
+        prefixed_query = f"query: {query}"
+        results_with_scores = self.vector_store.similarity_search_with_relevance_scores(prefixed_query, k=k)
 
         filtered_results = [
             (doc, score) for doc, score in results_with_scores
@@ -49,20 +50,14 @@ class KauflandRAG:
         return formatted_context.strip()
     
     def get_all_documents(self) -> tuple[list[str], list[dict]]:
-        """
-        Returns all document texts + metadatas directly from the Chroma collection.
-
-        """
-
+        """Returns all document texts + metadatas directly from the Chroma collection."""
         all_data = self.vector_store.get(include=['documents', 'metadatas'])
         return all_data['documents'], all_data['metadatas']
 
     def retrieve_scored(self, query: str, k: int = 5, score_threshold: float = 0.0) -> list[dict]:
-        """
-        Returns individual scored docs for RRF fusion.
-        
-        """
-        results_with_scores = self.vector_store.similarity_search_with_relevance_scores(query, k=k)
+        """Returns individual scored docs for RRF fusion."""
+        prefixed_query = f"query: {query}"
+        results_with_scores = self.vector_store.similarity_search_with_relevance_scores(prefixed_query, k=k)
         return [
             {"content": doc.page_content, "metadata": doc.metadata, "score": score}
             for doc, score in results_with_scores
@@ -74,11 +69,11 @@ if __name__ == "__main__":
     rag = KauflandRAG()
 
     print("--- Relevant query ---")
-    results = rag.vector_store.similarity_search_with_relevance_scores("Wie funktioniert Kaufland Pay?", k=4)
+    results = rag.vector_store.similarity_search_with_relevance_scores("query: Wie funktioniert Kaufland Pay?", k=4)
     for doc, score in results:
         print(f"{score:.3f} | {doc.page_content[:60]}...")
 
     print("\n--- Irrelevant query (should score much lower) ---")
-    results = rag.vector_store.similarity_search_with_relevance_scores("Wie ist das Wetter in Berlin?", k=4)
+    results = rag.vector_store.similarity_search_with_relevance_scores("query: Wie ist das Wetter in Berlin?", k=4)
     for doc, score in results:
         print(f"{score:.3f} | {doc.page_content[:60]}...")
