@@ -73,7 +73,6 @@ class GuardrailsManager:
             label = result['label'].upper()
             score = float(result.get('score', 1.0))
 
-            # DEBUG: Print what the guardrail is seeing during testing
             print(f"[Guardrails Debug] Text: '{text[:40]}...' | Label: {label} | Score: {score:.3f}")
             
             # Deepset model labels malicious inputs as 'INJECTION' and safe as 'LEGIT'
@@ -107,7 +106,7 @@ class GuardrailsManager:
             raw_masked_text = anonymized_result.text
 
             # Automatically convert ANY Presidio angle-bracket tag 
-            # into safe square brackets [TAG] for the injection classifier.
+            # into safe TAG (no `< >`) for the injection classifier.
             # This handles every current and future PII category automatically.
             safe_masked_text = re.sub(r'<([A-Z_]+)>', r'\1', raw_masked_text)
             

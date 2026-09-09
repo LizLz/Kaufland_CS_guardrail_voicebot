@@ -36,7 +36,7 @@ def route_intent(state: SupportState) -> str:
         return "rag_node"
     else:
         # Covers "small_talk", "policy_refusal", "out_of_domain", AND "escalate".
-        # We send direct escalations here so the direct_response_node can output a 
+        # send direct escalations here so the direct_response_node can output a 
         # predefined handover message without expecting a "Ja/Nein" confirmation.
         return "direct_response_node"
 

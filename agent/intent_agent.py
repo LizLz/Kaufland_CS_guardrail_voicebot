@@ -63,18 +63,17 @@ def intent_node(state: SupportState, config: RunnableConfig) -> SupportState:
     user_msg = HumanMessage(content=latest_message.content)
 
     configurable = config.get("configurable", {})
-    # 1. UPDATED: Set the default model to the fast OpenAI MoE
+
     model_name = configurable.get("groq_intent_model", os.environ.get("GROQ_INTENT_MODEL", "openai/gpt-oss-20b"))
 
     llm = ChatGroq(
         api_key=os.environ.get("GROQ_API_KEY"),
         model=model_name,
         temperature=0.0,
-        # 2. UPDATED: Increased max_tokens to prevent cutoff during the reasoning trace
         max_tokens=1500,
     )
 
-    # 3. KEEP THIS: Native structured output is the best practice!
+
     structured_llm = llm.with_structured_output(IntentDecision)
 
     final_action = "rag"
@@ -97,7 +96,7 @@ if __name__ == "__main__":
     import uuid
 
     print("\n" + "="*50)
-    print("🧪 TESTING INTENT AGENT (openai/gpt-oss-20b)")
+    print("TESTING INTENT AGENT (openai/gpt-oss-20b)")
     print("="*50)
 
     test_queries = [
@@ -117,5 +116,5 @@ if __name__ == "__main__":
         result = intent_node(state_in, dummy_config)
         action = result.get("action")
         
-        status = "✅ PASS" if action == expected else f"❌ FAIL (Expected: {expected})"
+        status = "PASS" if action == expected else f"FAIL (Expected: {expected})"
         print(f"🤖 Action: {action} {status}")

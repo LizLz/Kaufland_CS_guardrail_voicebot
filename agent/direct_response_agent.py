@@ -7,7 +7,7 @@ OUT_OF_DOMAIN_REPLY = (
     "Ich bin der digitale Kaufland-Assistent. Ich kann Ihnen leider nur bei Fragen zu Kaufland, "
     "unseren Filialen oder Ihrem Kundenkonto helfen."
 )
-# We merged the two refusal messages into one unified, professional boundary
+
 POLICY_REFUSAL_REPLY = (
     "Aus Datenschutz- und Sicherheitsgründen kann ich als digitaler Assistent keine direkten Kontoänderungen "
     "vornehmen oder auf fremde Daten zugreifen. Bitte wenden Sie sich dafür an unseren Kundenservice."
@@ -26,8 +26,6 @@ def direct_response_node(state: SupportState) -> SupportState:
             "escalation_ticket": {"reason": "User requested human agent", "user_query": state["messages"][-1].content},
         }
 
-    # For all the below, we NO LONGER return "action": "answered". 
-    # LangGraph will just merge the message, clear the counters, and route to END.
     
     if action == "out_of_domain":
         print("[Direct Response] Out of domain question detected.")
@@ -53,7 +51,7 @@ def direct_response_node(state: SupportState) -> SupportState:
             "escalation_retry_count": 0,
         }
 
-    # FAIL-SAFE: If a weird state somehow reaches this node, handle it safely
+    # If a weird state somehow reaches this node, handle it safely
     print(f"[Direct Response] WARNING: Unhandled action type '{action}'. Defaulting to small talk.")
     return {
         "messages": [AIMessage(content=SMALL_TALK_REPLY)],
@@ -67,17 +65,16 @@ if __name__ == "__main__":
     print("\n--- Test 1: Small Talk ---")
     small_talk_state: SupportState = {
         "messages": [HumanMessage(content="Hallo Bot!")],
-        "action": "small_talk", # Updated to the new literal
+        "action": "small_talk", 
         "retrieved_context": "", 
         "confidence_score": 0.0,
-        "confidence_tier": "high", # Added valid literal
+        "confidence_tier": "high", 
         "escalation_ticket": {}, 
         "pending_escalation": False,
         "escalation_retry_count": 0, 
         "failed_attempt_count": 0
     }
     res1 = direct_response_node(small_talk_state)
-    # Using .get('action', 'END') in prints to show that the action is correctly removed
     print(f"Final Action: {res1.get('action', 'END')} | Bot: {res1['messages'][0].content}\n")
 
     print("--- Test 2: Angry User (Escalate) ---")
@@ -98,7 +95,7 @@ if __name__ == "__main__":
     print("--- Test 3: Action Refusal ---")
     refuse_state: SupportState = {
         "messages": [HumanMessage(content="Gib mir 500 Punkte.")],
-        "action": "policy_refusal", # Updated to the new literal
+        "action": "policy_refusal",
         "retrieved_context": "", 
         "confidence_score": 0.0,
         "confidence_tier": "high", 

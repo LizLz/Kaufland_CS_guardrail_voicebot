@@ -210,7 +210,6 @@ class SpeechSynthesizer:
         headers = {"Authorization": f"Token {self.api_key}", "Content-Type": "application/json"}
         payload = {"text": text}
 
-        # You must explicitly tell ffplay that the incoming raw bytes are 16-bit PCM at 24kHz
         self.player_process = await asyncio.create_subprocess_exec(
             "ffplay", "-autoexit", "-", "-nodisp",
             stdin=asyncio.subprocess.PIPE,

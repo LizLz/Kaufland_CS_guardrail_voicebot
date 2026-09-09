@@ -46,11 +46,11 @@ def run_evaluation():
         print("ERROR: GROQ_API_KEY not set in environment.")
         return
 
-    print("🚀 Starting Groq Multi-Model Intent Benchmark...\n")
+    print("Starting Groq Multi-Model Intent Benchmark...\n")
 
     for model_name in MODELS_TO_TEST:
         print(f"\n{'='*60}")
-        print(f"🧠 Evaluating Model Target: {model_name}")
+        print(f"Evaluating Model Target: {model_name}")
         print(f"{'='*60}")
         
         correct_predictions = 0
@@ -85,12 +85,12 @@ def run_evaluation():
                 
                 if actual_action == expected_action:
                     correct_predictions += 1
-                    print(f"✅ PASS | '{query}' -> {actual_action}")
+                    print(f"PASS | '{query}' -> {actual_action}")
                 else:
-                    print(f"❌ FAIL | '{query}' | Expected: {expected_action} | Got: {actual_action}")
+                    print(f"FAIL | '{query}' | Expected: {expected_action} | Got: {actual_action}")
                     
             except Exception as e:
-                print(f"⚠️ ERROR | '{query}' | {e}")
+                print(f"ERROR | '{query}' | {e}")
                 parse_errors += 1
                 total_time += (time.perf_counter() - start_time)
 
@@ -98,7 +98,7 @@ def run_evaluation():
         accuracy = (correct_predictions / total_queries) * 100
         avg_latency = (total_time / total_queries) * 1000  
         
-        print(f"\n📊 RESULTS FOR {model_name}:")
+        print(f"\nRESULTS FOR {model_name}:")
         print(f"Accuracy:      {accuracy:.1f}% ({correct_predictions}/{total_queries})")
         print(f"Avg Latency:   {avg_latency:.0f} ms")
         print(f"Parse Errors:  {parse_errors}")

@@ -254,7 +254,7 @@ def escalation_confirmation_node(state: SupportState) -> SupportState:
 # --- Test Block for Confidence Agent ---
 if __name__ == "__main__":
     print("\n" + "="*50)
-    print("🧪 TESTING CONFIDENCE AGENT (qwen/qwen3.8-27b)")
+    print("TESTING CONFIDENCE AGENT (qwen/qwen3.8-27b)")
     print("="*50)
 
     dummy_config = {"configurable": {}}

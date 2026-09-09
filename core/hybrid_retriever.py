@@ -35,7 +35,6 @@ class SymSpellCorrector:
             prefix_length=7,
         )
         
-        # Define where to save the pre-compiled dictionary
         script_dir = os.path.dirname(os.path.abspath(__file__))
         self.dict_path = os.path.join(script_dir, "..", "data", "symspell_dict.txt")
 
@@ -44,7 +43,7 @@ class SymSpellCorrector:
             print("[SymSpell] Loading pre-compiled dictionary from disk (Instant)...")
             self.sym_spell.load_dictionary(self.dict_path, term_index=0, count_index=1)
         
-        # 2. SLOW PATH: First run only (or if you add a new larger corpus)
+        # 2. SLOW PATH: First run only (consider to add a larger corpus for better coverage and accuracy)
         else:
             print("[SymSpell] First run: Building and caching dictionary (This will take a moment)...")
             words = []
