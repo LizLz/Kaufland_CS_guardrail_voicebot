@@ -5,6 +5,10 @@
 Kaufland's app bundles a loyalty system (points redeemable for goods), an account system, and an in-app payment system (Kaufland Pay, built on Bluecode, with optional bank-card linking for QR-code payment). That combination gives the app real financial-app characteristics inside a grocery app, which makes it a meaningful testbed for guardrails: users have genuine questions worth a voice interface (easier than scrolling a long FAQ or waiting on hold), but the same account/payment surface is exactly what an adversarial user might try to exploit.
 
 ## System Architecture & Deployment
+
+- **Package Management & Environment:** Built using **`uv`** for deterministic, hyper-fast dependency resolution and isolation (`pyproject.toml` and `uv.lock`), replacing legacy Conda workflows.
+- **Execution Model:** Designed as a native local CLI application leveraging direct host hardware access (microphone and speakers via `pyaudio` and `ffplay`).
+
 ```text
 [Microphone / Audio Input] 
         │ (Live Audio Stream)

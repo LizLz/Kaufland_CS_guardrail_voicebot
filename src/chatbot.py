@@ -362,7 +362,6 @@ async def main():
         sys.stdout.flush()
         logger.info("Herunterfahren abgeschlossen. (Shutdown complete)")
 
-
 if __name__ == "__main__":
     try:
         asyncio.run(main())

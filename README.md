@@ -66,7 +66,8 @@ The workflow is managed as a state machine (`SupportState`) via LangGraph with s
 Kaufland_CS_guardrail/
 ├── DESIGN.md                  # Comprehensive architectural documentation & trade-offs
 ├── README.md                  # Project overview, setup, and navigation
-├── requirements.txt           # Python dependency manifests
+├── pyproject.toml             # uv project specification & dependencies
+├── uv.lock                    # Locked exact dependency tree
 ├── src/
 │   ├── graph.py               # LangGraph state machine definition & conditional routing
 │   └── chatbot.py             # Voice assistant orchestrator (LiveTranscriber, GraphProcessor, SpeechSynthesizer)
@@ -98,8 +99,19 @@ Kaufland_CS_guardrail/
   ```
 
 ## Setup & Installation
+
+### Prerequisites
+- **Python >= 3.11** installed on your system.
+- **`uv`** package manager installed (run `pip install uv` or visit [astral.sh/uv](https://astral.sh/uv) if you haven't already).
+- **`ffmpeg`** installed on your system path (provides `ffplay` for real-time text-to-speech audio playback).
+  - *Mac:* `brew install ffmpeg`
+  - *Windows:* `winget install ffmpeg`
+
 ### Install Dependencies
-`pip install -r requirements.txt`
+Clone the repository and run `uv` to instantly build the isolated environment:
+```bash
+uv sync
+```
 
 ### Configure Environment Variables
 Create a .env file in the project root directory:
@@ -123,16 +135,21 @@ python utility/vector.py      # Builds the Chroma vector store from the CSV
 
 ## How to run
 ### Text Mode 
-To verify graph flows and agent decisions interactively or via scripts:
-`python src/graph.py`
+### Text Mode 
+To verify graph flows and agent decisions interactively:
+```bash
+uv run python -m src.graph
+```
 
 ### Voice Assistant Mode
 To run the live voice assistant with Deepgram STT/TTS and local audio playback:
-`python src/chatbot.py`
-Prerequisite: Requires an active microphone and ffplay (bundled with ffmpeg) installed and added to your system PATH for audio streaming playback.
+```bash
+uv run python -m src.chatbot
+```
+Prerequisite: Requires an active microphone and `ffplay` available in your system path.
 
 ### Test the Model
-The project includes an adversarial test suite designed to validate failure modes, regression fixes, and state memory persistence:
+Run the comprehensive adversarial test suite via `uv`:
 ```bash
-python -m pytest tests/tests.py -v               
+uv run pytest tests/tests.py -v            
 ```
