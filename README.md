@@ -77,6 +77,7 @@ Kaufland_CS_guardrail/
 │   ├── rag_agent.py           # Spell correction, hybrid retrieval (BM25 + Dense + RRF) node
 │   ├── confidence_agent.py    # Three-tier confidence grading & escalation manager
 │   ├── clarification_agent.py # Short, voice-optimized clarification node
+│   ├── escalation_agent.py    # Escalation confirmation node
 │   └── direct_response_agent.py # Small talk, out-of-domain, and refusal responses
 ├── core/
 │   ├── state.py               # TypedDict SupportState definition
