@@ -135,7 +135,6 @@ python utility/vector.py      # Builds the Chroma vector store from the CSV
 
 ## How to run
 ### Text Mode 
-### Text Mode 
 To verify graph flows and agent decisions interactively:
 ```bash
 uv run python -m src.graph
