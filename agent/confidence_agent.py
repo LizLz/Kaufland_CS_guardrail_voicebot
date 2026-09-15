@@ -1,27 +1,21 @@
 import os
-import re
+import time
 from typing import Optional
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, model_validator
 from langchain_groq import ChatGroq
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, RemoveMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_core.runnables import RunnableConfig
 from core.state import SupportState
 
 load_dotenv()
 
 ESCALATION_OFFER_MESSAGE = "Ich bin mir bei dieser Antwort nicht ganz sicher. Möchten Sie mit einem Mitarbeiter sprechen? (Ja/Nein)"
-ESCALATION_CONFIRMED_MESSAGE = "Alles klar, ich verbinde Sie mit einem Mitarbeiter."
-ESCALATION_DECLINED_MESSAGE = "Kein Problem, lassen Sie mich wissen, falls ich sonst noch helfen kann."
 
-YES_WORDS = ["ja", "yes", "bitte", "ok", "okay"]
-NO_WORDS = ["nein", "no", "nicht nötig", "nicht notwendig", "lieber nicht", "nein danke"]
-
-# Grading rubric thresholds
 HIGH_THRESHOLD = 0.8
 LOW_THRESHOLD = 0.4
 MAX_FAILED_ATTEMPTS = 2
-
+MAX_CONFIDENCE_ATTEMPTS = 3
 
 class ConfidenceDecision(BaseModel):
     score: float = Field(description="Confidence score between 0.0 and 1.0")
@@ -37,10 +31,34 @@ class ConfidenceDecision(BaseModel):
                 data["score"] = 0.0
         return data
 
+# --- GLOBAL WARM-UP & LLM INITIALIZATION ---
+_confidence_llm = None
+_structured_llm = None
 
-def _matches_any_word(text: str, words: list[str]) -> bool:
-    """Match whole words/phrases only, not raw substrings."""
-    return any(re.search(rf"\b{re.escape(w)}\b", text) for w in words)
+def get_confidence_llm(configurable: dict = None):
+    """Lazily loads the Groq client, warms it up, and returns the structured output chain."""
+    global _confidence_llm, _structured_llm
+    if _confidence_llm is None:
+        configurable = configurable or {}
+        model_name = configurable.get("groq_confidence_model", os.environ.get("GROQ_CONFIDENCE_MODEL", "qwen/qwen3.6-27b"))
+        
+        _confidence_llm = ChatGroq(
+            api_key=os.environ.get("GROQ_API_KEY"),
+            model=model_name,
+            temperature=0.0,
+            max_tokens=1500,  
+        )
+        _structured_llm = _confidence_llm.with_structured_output(ConfidenceDecision)
+        
+        print("[Confidence Agent] Warming up LLM connection...")
+        try:
+            # Ping the API to establish the HTTPS connection
+            _confidence_llm.invoke([HumanMessage(content="warmup ping")])
+            print("[Confidence Agent] Warm-up complete.")
+        except Exception as e:
+            print(f"[Confidence Agent] Warm-up failed: {e}")
+            
+    return _structured_llm
 
 
 def confidence_node(state: SupportState, config: RunnableConfig) -> SupportState:
@@ -74,12 +92,8 @@ def confidence_node(state: SupportState, config: RunnableConfig) -> SupportState
     # Check if bot already gave up or said "I don't know"
     ai_msg_lower = ai_msg.lower()
     fallback_indicators = [
-        "keine information",
-        "liegen mir keine",
-        "leider nicht bekannt",
-        "kann ich leider nicht beantworten",
-        "kann ich nicht beantworten",
-        "weiß ich leider nicht",
+        "keine information", "liegen mir keine", "leider nicht bekannt",
+        "kann ich leider nicht beantworten", "kann ich nicht beantworten", "weiß ich leider nicht",
     ]
 
     is_fallback = any(indicator in ai_msg_lower for indicator in fallback_indicators)
@@ -111,19 +125,6 @@ def confidence_node(state: SupportState, config: RunnableConfig) -> SupportState
                 "escalation_ticket": {"reason": "Repeated bot fallback", "user_query": user_msg},
             }
 
-    # Configure LLM
-    configurable = config.get("configurable", {})
-    model_name = configurable.get("groq_confidence_model", os.environ.get("GROQ_CONFIDENCE_MODEL", "qwen/qwen3.6-27b"))
-
-    llm = ChatGroq(
-        api_key=os.environ.get("GROQ_API_KEY"),
-        model=model_name,
-        temperature=0.0,
-        max_tokens=1500,  
-    )
-
-    structured_llm = llm.with_structured_output(ConfidenceDecision)
-
     system_prompt = SystemMessage(content="""Reasoning: low
 Du bist ein strenger Qualitätsprüfer für den Kaufland-Kundenservice.
 Deine Aufgabe ist es, die Antwort des KI-Assistenten zu bewerten.
@@ -143,28 +144,43 @@ Retrieved Facts: {facts}
 AI Answer: {ai_msg}
 """)
 
+    configurable = config.get("configurable", {})
+    structured_llm = get_confidence_llm(configurable)
+    
     final_score = 0.0
     final_reasoning = "Parsing failed entirely."
 
-    for attempt in range(2):
+    for attempt in range(MAX_CONFIDENCE_ATTEMPTS):
         try:
             decision: ConfidenceDecision = structured_llm.invoke([system_prompt, user_prompt])
             final_score = decision.score
             final_reasoning = decision.reasoning
             break
         except Exception as e:
+            error_str = str(e).lower()
+            
+            # Catch HTTP 429 Quotas and Rate Limits
+            if "429" in error_str or "rate limit" in error_str or "too many requests" in error_str:
+                print(f"[Confidence Agent] Rate limit hit. Retrying in {attempt + 1}s...")
+                time.sleep(1.5 * (attempt + 1))
+                continue
+                
             print(f"[Confidence Agent] Attempt {attempt + 1} evaluation failed: {e}")
-            if attempt == 1:
-                print("[Confidence Agent] Fallback to escalation due to repeated failure.")
-                return {
-                    "messages": [AIMessage(content=ESCALATION_OFFER_MESSAGE)],
-                    "confidence_score": 0.0,
-                    "confidence_tier": "low",
-                    "action": "awaiting_confirmation",
-                    "pending_escalation": True,
-                    "escalation_retry_count": 0,
-                    "escalation_ticket": {"reason": "Confidence judge parsing failed", "user_query": user_msg},
-                }
+            
+            if attempt < MAX_CONFIDENCE_ATTEMPTS - 1:
+                time.sleep(1)
+                continue
+                
+            print("[Confidence Agent CRITICAL] Fallback to escalation due to repeated failure.")
+            return {
+                "messages": [AIMessage(content=ESCALATION_OFFER_MESSAGE)],
+                "confidence_score": 0.0,
+                "confidence_tier": "low",
+                "action": "awaiting_confirmation",
+                "pending_escalation": True,
+                "escalation_retry_count": 0,
+                "escalation_ticket": {"reason": "Confidence judge parsing failed", "user_query": user_msg},
+            }
 
     print(f"[Confidence Agent] Grade: {final_score} - {final_reasoning}")
 
@@ -207,54 +223,10 @@ AI Answer: {ai_msg}
             },
         }
 
-
-def escalation_confirmation_node(state: SupportState) -> SupportState:
-    print("[Escalation Node] Checking user's response to escalation offer...")
-    user_reply = state["messages"][-1].content.strip().lower()
-
-    if _matches_any_word(user_reply, YES_WORDS):
-        print("[Escalation Node] User confirmed. Escalating.")
-        return {
-            "messages": [AIMessage(content=ESCALATION_CONFIRMED_MESSAGE)],
-            "action": "escalate",
-            "pending_escalation": False,
-            "escalation_retry_count": 0,
-            "failed_attempt_count": 0,
-        }
-    elif _matches_any_word(user_reply, NO_WORDS):
-        print("[Escalation Node] User declined escalation.")
-        return {
-            "messages": [AIMessage(content=ESCALATION_DECLINED_MESSAGE)],
-            "action": "answered",
-            "pending_escalation": False,
-            "escalation_retry_count": 0,
-            "failed_attempt_count": 0,
-            "escalation_ticket": {},
-        }
-    else:
-        print("[Escalation Node] Reply doesn't look like yes/no — rerouting as a new question.")
-        messages_to_remove = []
-        if len(state["messages"]) >= 3:
-            msg_2 = state["messages"][-2]
-            msg_3 = state["messages"][-3]
-            if hasattr(msg_2, "id") and msg_2.id and hasattr(msg_3, "id") and msg_3.id:
-                messages_to_remove = [
-                    RemoveMessage(id=msg_2.id),
-                    RemoveMessage(id=msg_3.id)
-                ]
-
-        return {
-            "action": "reroute",
-            "pending_escalation": False,
-            "escalation_retry_count": 0,
-            "failed_attempt_count": 0,
-            "messages": messages_to_remove,
-        }
-
 # --- Test Block for Confidence Agent ---
 if __name__ == "__main__":
     print("\n" + "="*50)
-    print("TESTING CONFIDENCE AGENT (qwen/qwen3.8-27b)")
+    print("TESTING CONFIDENCE AGENT")
     print("="*50)
 
     dummy_config = {"configurable": {}}
@@ -280,26 +252,3 @@ if __name__ == "__main__":
     }
     res_low = confidence_node(state_low, dummy_config)
     print(f"Action: {res_low.get('action')} | Tier: {res_low.get('confidence_tier')} | Score: {res_low.get('confidence_score')}")
-
-    print("\n--- Test 3: Escalation Node (User says YES) ---")
-    state_esc_yes = {
-        "messages": [
-            AIMessage(content=ESCALATION_OFFER_MESSAGE),
-            HumanMessage(content="Ja, bitte verbinden Sie mich.")
-        ]
-    }
-    res_esc_yes = escalation_confirmation_node(state_esc_yes)
-    print(f"Action: {res_esc_yes.get('action')} (Expected: escalate)")
-
-    print("\n--- Test 4: Escalation Node (User ignores offer and asks new question) ---")
-    # Simulate a user ignoring the yes/no prompt and asking a completely new question
-    msg_1 = HumanMessage(content="Gibt es Geldautomaten?", id="msg1")
-    msg_2 = AIMessage(content=ESCALATION_OFFER_MESSAGE, id="msg2")
-    msg_3 = HumanMessage(content="Wie funktioniert kaufland pay?", id="msg3")
-    
-    state_esc_ignore = {"messages": [msg_1, msg_2, msg_3]}
-    res_esc_ignore = escalation_confirmation_node(state_esc_ignore)
-    
-    print(f"Action: {res_esc_ignore.get('action')} (Expected: reroute)")
-    if "messages" in res_esc_ignore:
-        print(f"Messages to remove: {[m.id for m in res_esc_ignore['messages']]}")

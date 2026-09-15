@@ -164,20 +164,6 @@ class GraphProcessor:
         self.graph_config = {"configurable": {"thread_id": self.thread_id}}
         self._HumanMessage = HumanMessage
 
-    def _full_state(self, user_text: str) -> dict:
-        """Initialize every SupportState on the very first turn of a session."""
-        return {
-            "messages": [self._HumanMessage(content=user_text)],
-            "action": "",
-            "retrieved_context": "",
-            "confidence_score": 0.0,
-            "confidence_tier": "",
-            "escalation_ticket": {},
-            "pending_escalation": False,
-            "escalation_retry_count": 0,
-            "failed_attempt_count": 0,
-        }
-
     async def generate_response(self, user_text: str) -> dict:
         start_time = time.time()
         
@@ -268,7 +254,7 @@ class SpeechSynthesizer:
 # --- Main Application ---
 
 class VoiceAssistant:
-    TERMINATION_PHRASES = ["tschüss", "auf wiedersehen", "bye", "beenden"]
+    TERMINATION_PHRASES = ["tschüss", "auf wiedersehen", "bye", "beenden", "aufhören"]
 
     def __init__(self, config: Config):
         self.transcriber = LiveTranscriber(config)
@@ -314,7 +300,9 @@ class VoiceAssistant:
                     await self.synthesizer.speak(goodbye_message)
                     break
 
+                # The LLM execution
                 response = await self.llm_processor.generate_response(user_text)
+                
                 telemetry["graph_latency_ms"] = response["elapsed_ms"]
                 telemetry["action"] = response["action"]
                 telemetry["confidence"] = response["confidence"]
@@ -328,13 +316,23 @@ class VoiceAssistant:
 
                 if telemetry["escalated"]:
                     logger.warning("System Escalation Triggered", extra={"telemetry": telemetry})
+                    # End the loop if we are handing off to a real human
                     break
 
             except Exception as e:
                 telemetry["error_type"] = type(e).__name__
                 logger.error(f"Error in main loop: {e}", extra={"telemetry": telemetry})
-                print("Starte Hörschleife neu...")
-                await asyncio.sleep(1)
+                
+                # Safety net for Guardrail SecurityErrors or graph crashes
+                error_msg = str(e)
+                if "SecurityError" in error_msg or "Sicherheitsgründen" in error_msg:
+                    fallback_text = "Diese Anfrage konnte aus Sicherheitsgründen leider nicht verarbeitet werden."
+                else:
+                    fallback_text = "Entschuldigung, es gab ein technisches Problem. Bitte versuchen Sie es erneut."
+                
+                print(f"🤖 KI (Fallback): {fallback_text}")
+                await self.synthesizer.speak(fallback_text)
+                await asyncio.sleep(0.5)
 
     async def cleanup(self):
         logger.info("Räume Ressourcen auf (Cleaning up resources)...")

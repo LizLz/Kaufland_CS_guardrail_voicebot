@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import time
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_groq import ChatGroq
@@ -11,7 +12,8 @@ from typing import Literal
 
 load_dotenv()
 
-MAX_INTENT_ATTEMPTS = 2
+# Increased to 3 to allow for one rate-limit pause and one general retry
+MAX_INTENT_ATTEMPTS = 3
 
 SYSTEM_PROMPT = SystemMessage(content="""Reasoning: low
 Du bist der Routing-Agent für den Kaufland-Kundenservice.
@@ -63,7 +65,7 @@ def intent_node(state: SupportState, config: RunnableConfig) -> SupportState:
     user_msg = HumanMessage(content=latest_message.content)
 
     configurable = config.get("configurable", {})
-
+    # Note: Groq models are usually formatted like "llama3-70b-8192" or "mixtral-8x7b-32768". 
     model_name = configurable.get("groq_intent_model", os.environ.get("GROQ_INTENT_MODEL", "openai/gpt-oss-20b"))
 
     llm = ChatGroq(
@@ -73,10 +75,12 @@ def intent_node(state: SupportState, config: RunnableConfig) -> SupportState:
         max_tokens=1500,
     )
 
-
     structured_llm = llm.with_structured_output(IntentDecision)
 
-    final_action = "rag"
+    # Fail-safe default is RAG. If routing dies, it's safer to search the database 
+    # than to hang up on the customer.
+    final_action = "rag" 
+    
     for attempt in range(MAX_INTENT_ATTEMPTS):
         try:
             decision_obj = structured_llm.invoke([SYSTEM_PROMPT, user_msg])
@@ -84,19 +88,33 @@ def intent_node(state: SupportState, config: RunnableConfig) -> SupportState:
             break
 
         except Exception as e:
+            error_str = str(e).lower()
+            
+            # Catch Groq Rate Limits / Quotas
+            if "429" in error_str or "rate limit" in error_str or "too many requests" in error_str:
+                print(f"[Intent Agent] Rate limit hit. Retrying in {attempt + 1}s...")
+                time.sleep(1.5 * (attempt + 1))  # Exponential backoff pause
+                continue
+                
             print(f"[Intent Agent] Routing attempt {attempt + 1} failed ({e})")
-            if attempt == MAX_INTENT_ATTEMPTS - 1:
-                print("[Intent Agent] Both attempts failed, defaulting to 'rag'")
+            
+            # Catch standard network timeouts
+            if attempt < MAX_INTENT_ATTEMPTS - 1:
+                time.sleep(1)
+                continue
+                
+            print("[Intent Agent CRITICAL] All attempts failed, defaulting to 'rag'")
 
     print(f"[Intent Agent] Decision made: {final_action.upper()}")
     return {"action": final_action}
+
 
 # --- Test Block for Intent Agent ---
 if __name__ == "__main__":
     import uuid
 
     print("\n" + "="*50)
-    print("TESTING INTENT AGENT (openai/gpt-oss-20b)")
+    print("TESTING INTENT AGENT")
     print("="*50)
 
     test_queries = [
@@ -116,5 +134,5 @@ if __name__ == "__main__":
         result = intent_node(state_in, dummy_config)
         action = result.get("action")
         
-        status = "PASS" if action == expected else f"FAIL (Expected: {expected})"
+        status = "PASS ✅" if action == expected else f"FAIL ❌ (Expected: {expected})"
         print(f"🤖 Action: {action} {status}")

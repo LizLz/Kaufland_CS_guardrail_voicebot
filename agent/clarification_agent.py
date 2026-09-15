@@ -1,4 +1,5 @@
 import os
+import time
 from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from core.state import SupportState
@@ -8,6 +9,30 @@ load_dotenv()
 
 CLARIFICATION_FALLBACK_MESSAGE = "Können Sie Ihre Frage etwas genauer formulieren?"
 NO_CONTEXT_CLARIFICATION_MESSAGE = "Dazu konnte ich leider nichts finden. Können Sie Ihre Frage etwas anders formulieren?"
+
+MAX_CLARIFICATION_ATTEMPTS = 3
+
+# --- GLOBAL WARM-UP & LLM INITIALIZATION ---
+_clarification_llm = None
+
+def get_clarification_llm():
+    """Lazily loads the Groq client and warms it up to prevent cold-start latency."""
+    global _clarification_llm
+    if _clarification_llm is None:
+        _clarification_llm = ChatGroq(
+            api_key=os.environ.get("GROQ_API_KEY"),
+            model=os.environ.get("GROQ_CHAT_MODEL", "qwen/qwen3.8-27b"), # Matches RAG model fallback style
+            temperature=0.3, 
+        )
+        print("[Clarification Agent] Warming up LLM connection...")
+        try:
+            # Ping the API to establish the HTTPS connection early
+            _clarification_llm.invoke([HumanMessage(content="warmup ping")])
+            print("[Clarification Agent] Warm-up complete.")
+        except Exception as e:
+            print(f"[Clarification Agent] Warm-up failed: {e}")
+            
+    return _clarification_llm
 
 
 def clarification_node(state: SupportState) -> SupportState:
@@ -44,11 +69,8 @@ def clarification_node(state: SupportState) -> SupportState:
             "pending_escalation": False,
         }
 
-    llm = ChatGroq(
-        api_key=os.environ.get("GROQ_API_KEY"),
-        model=os.environ.get("GROQ_CHAT_MODEL", "openai/gpt-oss-120b"),
-        temperature=0.3, 
-    )
+    # Fetch warmed-up LLM
+    llm = get_clarification_llm()
 
     # forbid TTS-breaking characters
     system_prompt = SystemMessage(content="""Du bist ein hilfreicher Kaufland-Kundenservice-Assistent an einem Sprachtelefon.
@@ -69,21 +91,41 @@ REGELN FÜR DIE SPRACHAUSGABE (TTS):
     Unsichere Antwort, die verworfen wurde: {weak_answer}
     """)
 
-    try:
-        response = llm.invoke([system_prompt, user_prompt])
-        clarification_text = response.content.strip()
-        
-        # Strip out hallucinated quotes and markdown
-        clarification_text = clarification_text.strip('\'"').replace("**", "").replace("*", "")
-        
-        # If the LLM ignored instructions and wrote a long response, fall back safely
-        if len(clarification_text) > 150:
-            print("[Clarification Agent] Warning: LLM generated a question that is too long. Using fallback.")
-            clarification_text = CLARIFICATION_FALLBACK_MESSAGE
+    clarification_text = CLARIFICATION_FALLBACK_MESSAGE
+
+    for attempt in range(MAX_CLARIFICATION_ATTEMPTS):
+        try:
+            response = llm.invoke([system_prompt, user_prompt])
+            generated_text = response.content.strip()
             
-    except Exception as e:
-        print(f"[Clarification Agent] LLM call failed: {e}")
-        clarification_text = CLARIFICATION_FALLBACK_MESSAGE
+            # Strip out hallucinated quotes and markdown
+            generated_text = generated_text.strip('\'"').replace("**", "").replace("*", "")
+            
+            # If the LLM ignored instructions and wrote a long response, fall back safely
+            if len(generated_text) > 150:
+                print("[Clarification Agent] Warning: LLM generated a question that is too long. Using fallback.")
+                clarification_text = CLARIFICATION_FALLBACK_MESSAGE
+            else:
+                clarification_text = generated_text
+                
+            break  # Success, exit retry loop
+            
+        except Exception as e:
+            error_str = str(e).lower()
+            
+            # Catch HTTP 429 Quotas and Rate Limits
+            if "429" in error_str or "rate limit" in error_str or "too many requests" in error_str:
+                print(f"[Clarification Agent] Rate limit hit. Retrying in {attempt + 1}s...")
+                time.sleep(1.5 * (attempt + 1))
+                continue
+                
+            print(f"[Clarification Agent] Attempt {attempt + 1} failed: {e}")
+            if attempt < MAX_CLARIFICATION_ATTEMPTS - 1:
+                time.sleep(1)
+                continue
+                
+            print("[Clarification Agent CRITICAL] All LLM calls failed, defaulting to generic fallback.")
+            clarification_text = CLARIFICATION_FALLBACK_MESSAGE
 
     return {
         "messages": [AIMessage(content=clarification_text)],

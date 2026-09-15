@@ -1,11 +1,11 @@
 from typing import TypedDict, Annotated, List, Literal
 from langgraph.graph.message import add_messages
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import AnyMessage
 
 
 class SupportState(TypedDict):
     # new messages are appended to the chat history, not overwriting
-    messages: Annotated[list[BaseMessage], add_messages]
+    messages: Annotated[list[AnyMessage], add_messages]
     
     action: Literal[
             # 1. Core Intents (From Intent Agent)

@@ -38,7 +38,7 @@ def build_vector_database(force_rebuild: bool = False):
                 continue
 
             doc = Document(
-                page_content=f"Frage: {row['Question']}\nAntwort: {row['Answer']}",
+                page_content=f"passgage: Frage: {row['Question']}\nAntwort: {row['Answer']}",
                 metadata={
                     "file_source": os.path.basename(csv_path),
                     "url_source": row.get('Source', 'Unknown'),

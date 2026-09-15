@@ -7,8 +7,9 @@ from agent.guardrail_agent import get_guardrails_manager, guardrail_node
 from agent.rag_agent import get_rag_engine, rag_node
 from core.state import SupportState
 from agent.intent_agent import intent_node
-from agent.confidence_agent import confidence_node, escalation_confirmation_node
-from agent.clarification_agent import clarification_node
+from agent.confidence_agent import confidence_node, get_confidence_llm
+from agent.escalation_agent import escalation_confirmation_node
+from agent.clarification_agent import clarification_node, get_clarification_llm
 from agent.direct_response_agent import direct_response_node
 
 
@@ -79,11 +80,16 @@ def build_kaufland_graph():
     start_time = time.time()
 
     # Concurrent model pre-loading
-    with ThreadPoolExecutor(max_workers=2) as executor:
+    with ThreadPoolExecutor(max_workers=4) as executor:
         future_guard = executor.submit(get_guardrails_manager)
         future_rag = executor.submit(get_rag_engine)
+        future_conf = executor.submit(get_confidence_llm)
+        future_clar = executor.submit(get_clarification_llm)
+        
         future_guard.result()
         future_rag.result()
+        future_conf.result() 
+        future_clar.result()
 
     print(f"[System] All models initialized in {(time.time() - start_time):.2f} seconds.")
 

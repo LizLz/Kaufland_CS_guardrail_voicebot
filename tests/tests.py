@@ -60,6 +60,18 @@ class TestModelSingletonsAndLifespan:
         assert "bm25" in components_1
         assert "spell" in components_1
 
+    def test_confidence_llm_singleton(self):
+        from agent.confidence_agent import get_confidence_llm
+        llm_1 = get_confidence_llm()
+        llm_2 = get_confidence_llm()
+        assert llm_1 is llm_2, "Confidence LLM is not behaving as a singleton!"
+
+    def test_clarification_llm_singleton(self):
+        from agent.clarification_agent import get_clarification_llm
+        llm_1 = get_clarification_llm()
+        llm_2 = get_clarification_llm()
+        assert llm_1 is llm_2, "Clarification LLM is not behaving as a singleton!"
+
 
 # ---------------------------------------------------------------------------
 # 2. Guardrail & PII Masking Vulnerability Tests
@@ -212,6 +224,30 @@ class TestGraphExecutionAndState:
         result = app.invoke({"messages": [HumanMessage(content="Ja, bitte verbinde mich.")]}, config=config)
 
         assert result.get("action") == "escalate" or result.get("pending_escalation") is False
+
+    def test_amnesia_protocol_reroute(self, app):
+        """Simulates a user ignoring the 'Do you want human help?' prompt to ask a new question."""
+        thread_id = str(uuid.uuid4())
+        config = {"configurable": {"thread_id": thread_id}}
+
+        # Turn 1: Force an escalation offer (Ask a completely hallucinated/unanswerable question)
+        app.invoke({"messages": [HumanMessage(content="Verkauft Kaufland auch Raumschiffe?")]}, config=config)
+        app.invoke({"messages": [HumanMessage(content="Wann kommt der Mars-Rover in der Filiale an?")]}, config=config)
+        
+        # At this point, the bot should have offered escalation: "Möchten Sie mit einem Mitarbeiter sprechen?"
+        
+        # Turn 2: User IGNORES the Yes/No question and asks a valid FAQ question instead
+        result = app.invoke({"messages": [HumanMessage(content="Wie funktioniert Kaufland Pay?")]}, config=config)
+        
+        # Assertions
+        action = result.get("action")
+        pending = result.get("pending_escalation")
+        bot_reply = result["messages"][-1].content.lower()
+        
+        # The Amnesia Protocol should have deleted the escalation state and successfully answered the new query
+        assert pending is False, "Amnesia Protocol failed: System is still stuck waiting for a Yes/No."
+        assert action in ["answered", "rag"], f"Amnesia Protocol failed: Wrong routing action '{action}'"
+        assert "ja/nein" not in bot_reply, "Amnesia Protocol failed: Bot repeated the escalation offer."
 
 
 if __name__ == "__main__":

@@ -4,7 +4,6 @@ from typing import Tuple, Dict, Any
 from presidio_analyzer import AnalyzerEngine, PatternRecognizer
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_anonymizer import AnonymizerEngine
-from presidio_anonymizer.entities import OperatorConfig
 from transformers import pipeline 
 from dotenv import load_dotenv
 
@@ -41,17 +40,13 @@ class GuardrailsManager:
             "du bist jetzt", "systemprompt",
         ]
 
-        # ====================================================
-        # Loading Prompt Guard LOCALLY into server RAM
-        # ====================================================
         print("[Guardrails] Loading local offline security model...")
         
-        # Switched to Deepset's model and added tokenizer truncation
         self.guard_pipeline = pipeline(
             "text-classification", 
             model="patronus-studio/wolf-defender-prompt-injection",
             truncation=True,
-            max_length=512
+            max_length=2048 
         )
 
         self.dangerous_code_patterns = [
@@ -61,9 +56,6 @@ class GuardrailsManager:
         self.safe_document_dir = os.path.abspath("./safe_docs")
 
 
-    # ==========================================
-    # LOCAL OFFLINE SECURITY CHECK
-    # ==========================================
     def check_with_prompt_guard(self, text: str) -> tuple[bool, str]:
         if not text or not text.strip():
             return False, ""
@@ -72,70 +64,65 @@ class GuardrailsManager:
             result = self.guard_pipeline(text)[0]
             label = result['label'].upper()
             score = float(result.get('score', 1.0))
-
-            print(f"[Guardrails Debug] Text: '{text[:40]}...' | Label: {label} | Score: {score:.3f}")
             
-            # Deepset model labels malicious inputs as 'INJECTION' and safe as 'LEGIT'
+            # Deepset/Patronus model labels malicious inputs as 'INJECTION'
             if label == 'INJECTION' and score > 0.80:
                 return True, "Diese Anfrage konnte nicht aus Sicherheitsgründen bearbeitet werden."
                 
             return False, ""
             
         except Exception as e:
-            print(f"[Guardrails] Error during local classification: {e}")
-            return False, ""
+            print(f"[Guardrails CRITICAL] Error during local classification: {e}")
+            # If the model crashes (OOM), block the request to prevent bypass.
+            return True, "Sicherheitsprüfung fehlgeschlagen. System blockiert."
 
-    # ==========================================
-    # INPUT VALIDATION
-    # ==========================================
     def mask_pii(self, text: str) -> str:
-            results = self.analyzer.analyze(text=text, language="de")
+        results = self.analyzer.analyze(text=text, language="de")
+        
+        protected_spans = [(r.start, r.end) for r in results if r.entity_type == "BRAND_TERM"]
+        def overlaps_protected(result) -> bool:
+            return any(result.start < end and result.end > start for start, end in protected_spans)
             
-            # Keep protected brand terms safe from being redacted
-            protected_spans = [(r.start, r.end) for r in results if r.entity_type == "BRAND_TERM"]
-            def overlaps_protected(result) -> bool:
-                return any(result.start < end and result.end > start for start, end in protected_spans)
-                
-            results = [r for r in results if r.entity_type != "BRAND_TERM" and not overlaps_protected(r)]
-            
-            anonymized_result = self.anonymizer.anonymize(
-                text=text, 
-                analyzer_results=results
-            )
-            
-            raw_masked_text = anonymized_result.text
-
-            # Automatically convert ANY Presidio angle-bracket tag 
-            # into safe TAG (no `< >`) for the injection classifier.
-            # This handles every current and future PII category automatically.
-            safe_masked_text = re.sub(r'<([A-Z_]+)>', r'\1', raw_masked_text)
-            
-            return safe_masked_text
+        results = [r for r in results if r.entity_type != "BRAND_TERM" and not overlaps_protected(r)]
+        
+        anonymized_result = self.anonymizer.anonymize(
+            text=text, 
+            analyzer_results=results
+        )
+        
+        # Angle bracket normalization for classifier safety
+        safe_masked_text = re.sub(r'<([A-Z_]+)>', r'\1', anonymized_result.text)
+        return safe_masked_text
 
     def _keyword_prefilter(self, text: str) -> bool:
         text_lower = text.lower()
         return any(phrase in text_lower for phrase in self.injection_keywords)
 
     def validate_input(self, user_input: str) -> str:
-        """Safely checks user input, chunking it if it's extremely long to avoid 512 token limit."""
         clean_text = self.mask_pii(user_input)
 
         if self._keyword_prefilter(clean_text):
-            raise SecurityError("Diese Anfrage konnte nicht verarbeitet werden.")
+            raise SecurityError("Diese Anfrage konnte nicht verarbeitet werden (Keyword Filter).")
 
-        # Slice into 1500-character chunks to safely fit inside context window
-        input_chunks = [clean_text[i:i+1500] for i in range(0, len(clean_text), 1500)]
+        # Sliding window chunking to prevent "Seam Injection" evasion.
+        # Uses 6000 chars (~1200 tokens) with a 500-char overlap so payloads are never cut in half.
+        chunk_size = 6000
+        overlap = 500
+        input_chunks = []
+        
+        if len(clean_text) <= chunk_size:
+            input_chunks = [clean_text]
+        else:
+            for i in range(0, len(clean_text) - overlap, chunk_size - overlap):
+                input_chunks.append(clean_text[i : i + chunk_size])
         
         for chunk in input_chunks:
             is_injection, _ = self.check_with_prompt_guard(chunk)
             if is_injection:
-                raise SecurityError("Diese Anfrage konnte nicht verarbeitet werden.")
+                raise SecurityError("Diese Anfrage konnte nicht verarbeitet werden (Prompt Guard).")
 
         return clean_text
 
-    # ==========================================
-    # TRADITIONAL APP SECURITY
-    # ==========================================
     def validate_tool_arguments(self, args: Dict[str, Any]) -> Dict[str, Any]:
         for key, value in args.items():
             if isinstance(value, str):
